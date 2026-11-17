@@ -27,6 +27,23 @@ export interface TyreChoice {
 }
 export const defaultTyres = (): TyreChoice => ({ except: [], noSetLines: true, coming: null })
 
+/** What else of a car comes (#339): its log photos, its picture, its charts, its dashboard. A null is "as the car is": taken when the car has none. */
+export interface MediaChoice {
+  photos: boolean
+  picture: boolean | null
+  charts: boolean
+  dashboard: boolean | null
+}
+export const defaultMedia = (): MediaChoice => ({ photos: true, picture: null, charts: true, dashboard: null })
+
+/** The media as the server takes them: a picture or dashboard left as the car is comes to a new car, never over one of yours unseen. */
+export const mediaInput = (media: MediaChoice, asNew: boolean) => ({
+  photos: media.photos,
+  picture: media.picture ?? asNew,
+  charts: media.charts,
+  dashboard: media.dashboard ?? asNew,
+})
+
 /** The tyre choice as the server takes it. */
 export const tyresInput = (tyres: TyreChoice) => ({ except: tyres.except, noSetLines: tyres.noSetLines })
 
@@ -62,9 +79,8 @@ export function kindsInput(kinds: Kinds, asNew: boolean) {
 export function useHeldBack() {
   const { t } = useTranslation()
   return (kind: Kind, review: KindReview): string | null => {
-    if (review.withPhotos > 0 && review.onTyreLines > 0) return t('import.kinds.expense.heldBoth', { photos: review.withPhotos, lines: review.onTyreLines })
+    // Photos hold nothing back since #339 (they come back with their entries; the confirmation counts the ones that do not).
     if (review.onTyreLines > 0) return t('import.kinds.expense.heldLines', { lines: review.onTyreLines })
-    if (review.withPhotos > 0) return t(`import.kinds.${kind === 'expense' ? 'expense' : 'refueling'}.heldPhotos`, { photos: review.withPhotos })
     if (review.backup === 0) return t(`import.kinds.${kind}.noneInBackup`)
     return null
   }

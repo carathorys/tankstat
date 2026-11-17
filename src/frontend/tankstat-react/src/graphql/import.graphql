@@ -179,6 +179,19 @@ query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
     inTrash
     links
     linksLost
+    media {
+      photosNew
+      photosHere
+      photosLeftOut
+      picture
+      targetPicture
+      chartsNew
+      chartsHere
+      ownChartsNew
+      dashboard
+      targetDashboard
+      ownDashboard
+    }
     tyres {
       expenses
       noSetLines
@@ -210,6 +223,7 @@ query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
       targetTrashed
       withPhotos
       onTyreLines
+      photosLost
     }
   }
 }
@@ -252,6 +266,16 @@ fragment ImportRunFields on ImportRunInfo {
     inTrash
     replacing
     links
+    media {
+      photos
+      photosHere
+      picture
+      charts
+      chartsHere
+      dashboard
+      ownDashboard
+      tilesLeftOut
+    }
     tyres {
       sets
       lines

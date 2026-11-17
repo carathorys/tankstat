@@ -987,7 +987,8 @@
       "replaceNotConfirmed": "Type the car's name to confirm what is deleted.",
       "replaceNothing": "The backup has none of this kind, so there is nothing to replace yours with.",
       "tooManyChoices": "Too many entries were chosen one by one. Use Tick all or Untick all, then change the few that differ.",
-      "unknownKind": "There is no such kind of entry."
+      "unknownKind": "There is no such kind of entry.",
+      "photoMissing": "The backup has no file for this picture."
     },
     "chart": {
       "invalid": "This chart is not valid.",
@@ -1495,7 +1496,11 @@
         "expense": "{{title}} ({{date}})",
         "recurring": "{{title}} (recurring expense)",
         "tyreSet": "The tyre set {{title}}",
-        "tyreLines": "Lines not tied to a set"
+        "tyreLines": "Lines not tied to a set",
+        "photo": "A photo",
+        "picture": "The car's picture",
+        "chart": "The chart {{title}}",
+        "dashboard": "The dashboard"
       },
       "nothing": "Nothing was imported: your cars are as they were.",
       "failure": {
@@ -1582,9 +1587,7 @@
         "imported_one": "Imported {{count}} refuelling; changed {{taken}} to the backup's values.",
         "imported_other": "Imported {{count}} refuellings; changed {{taken}} to the backup's values.",
         "leftRefused": "Nothing of {{car}} was deleted or imported: one of the backup's refuellings could not be saved.",
-        "modesLabel": "Refuellings of {{car}}",
-        "heldPhotos": "Replace all is not available yet: {{photos}} of your refuellings have photos, which a backup cannot bring back until photos can be imported.",
-        "heldSince": "Nothing of {{car}} was deleted or imported: since the review, one of its refuellings got a photo or a tyre log line, which the backup could not bring back."
+        "modesLabel": "Refuellings of {{car}}"
       },
       "expense": {
         "name": "Expenses",
@@ -1609,10 +1612,8 @@
         "imported_other": "Imported {{count}} expenses; changed {{taken}} to the backup's values.",
         "leftRefused": "Nothing of {{car}} was deleted or imported: one of the backup's expenses could not be saved.",
         "modesLabel": "Expenses of {{car}}",
-        "heldPhotos": "Replace all is not available yet: {{photos}} of your expenses have photos, which a backup cannot bring back until photos can be imported.",
-        "heldLines": "Replace all is not available yet: {{lines}} of your expenses belong to tyre log lines, which a backup cannot bring back until tyres can be imported.",
-        "heldBoth": "Replace all is not available yet: {{photos}} of your expenses have photos and {{lines}} belong to tyre log lines, which a backup cannot bring back until photos and tyres can be imported.",
-        "heldSince": "Nothing of {{car}} was deleted or imported: since the review, one of its expenses got a photo or a tyre log line, which the backup could not bring back."
+        "heldLines": "Replace all is not available yet: {{lines}} of your expenses belong to tyre log lines, whose amounts a backup cannot bring back to a set that stays.",
+        "heldSince": "Nothing of {{car}} was deleted or imported: since the review, one of its expenses got a tyre log line, which the backup could not bring back."
       },
       "recurring": {
         "name": "Recurring expenses",
@@ -1662,6 +1663,43 @@
       "importedNoSet_other": "Imported {{count}} lines of the tyre log that belong to no set.",
       "amountsHere_one": "{{count}} amount of their lines is already among your expenses: it stays there, and the line comes without it.",
       "amountsHere_other": "{{count}} amounts of their lines are already among your expenses: they stay there, and the lines come without them."
+    },
+    "media": {
+      "photosName": "Photos of entries",
+      "pictureName": "The car's picture",
+      "chartsName": "Charts",
+      "dashboardName": "The dashboard",
+      "photosRow": "Photos come with their entries (imported or already here).",
+      "noPhotos": "This backup was made without the photos of entries; none can be imported.",
+      "pictureRow": "Ticked, the backup's replaces it for good.",
+      "chartsRow": "The shared charts, and your own.",
+      "dashboardRow": "Ticked, the backup's replaces it for everyone who sees this car.",
+      "photos_one": "{{count}} photo of entries that are imported or already here is new; {{same}} are already here.",
+      "photos_other": "{{count}} photos of entries that are imported or already here are new; {{same}} are already here.",
+      "pictureKept": "Your {{target}} has one; the backup's is not taken.",
+      "pictureComes": "The backup's picture comes with the car.",
+      "pictureReplaces": "The backup's picture replaces your {{target}}'s for good.",
+      "charts_one": "{{count}} shared chart is new; {{same}} are already here. Charts that were someone's own are not imported.",
+      "charts_other": "{{count}} shared charts are new; {{same}} are already here. Charts that were someone's own are not imported.",
+      "ownCharts_one": "{{count}} of them is your own, and comes back to you.",
+      "ownCharts_other": "{{count}} of them are your own, and come back to you.",
+      "dashboardKept": "Your {{target}} has its own; the backup's is not taken unless you tick it under Choose what to import (it would replace it for everyone who sees this car).",
+      "dashboardComes": "The backup's dashboard comes with the car.",
+      "dashboardReplaces": "The backup's dashboard replaces your {{target}}'s for everyone who sees it.",
+      "ownDashboard": "Your own dashboard of this car comes back to you.",
+      "importedPhotos_one": "Imported {{count}} photo.",
+      "importedPhotos_other": "Imported {{count}} photos.",
+      "photosHere_one": "{{count}} photo was there already.",
+      "photosHere_other": "{{count}} photos were there already.",
+      "importedPicture": "Imported the car's picture.",
+      "importedCharts_one": "Imported {{count}} chart.",
+      "importedCharts_other": "Imported {{count}} charts.",
+      "importedDashboard": "Imported the dashboard.",
+      "importedOwnDashboard": "Imported your own dashboard.",
+      "tilesLeftOut_one": "{{count}} tile of the dashboard was left out: its chart did not come.",
+      "tilesLeftOut_other": "{{count}} tiles of the dashboard were left out: their charts did not come.",
+      "photosLost_one": "{{count}} of their photos is not in the backup and is lost for good.",
+      "photosLost_other": "{{count}} of their photos are not in the backup and are lost for good."
     }
   },
   "welcome": {

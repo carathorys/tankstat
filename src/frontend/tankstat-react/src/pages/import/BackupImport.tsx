@@ -33,7 +33,7 @@ import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage, SuccessMessage } from '../../messages.tsx'
 import { BackupFileStep } from './BackupFileStep.tsx'
 import { KindsDisclosure, ReplaceConfirmations, type Replacement } from './BackupKinds.tsx'
-import { defaultKinds, defaultTyres, kindsInput, nothingChosen, tyresInput, replaces, useKindLine, type CarReview, type Kind, type Kinds, type TyreChoice } from './backupKinds.ts'
+import { defaultKinds, defaultMedia, defaultTyres, kindsInput, mediaInput, nothingChosen, tyresInput, type MediaChoice, replaces, useKindLine, type CarReview, type Kind, type Kinds, type TyreChoice } from './backupKinds.ts'
 
 export type BackupStep = 'file' | 'cars' | 'review' | 'done'
 
@@ -53,6 +53,8 @@ interface Choice {
   kinds: Kinds
   /** Its tyres (#339): every new set unless unticked, and the lines of no set. */
   tyres: TyreChoice
+  /** Its photos, picture, charts and dashboard (#339). */
+  media: MediaChoice
 }
 
 const active = (run: ImportRunFieldsFragment | undefined) => run?.state === 'WAITING' || run?.state === 'RUNNING'
@@ -144,7 +146,7 @@ function useUnits() {
 const toInput = (choices: Record<string, Choice>, names: Record<string, string> = {}) =>
   Object.entries(choices)
     .filter(([, c]) => c.picked)
-    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: tyresInput(c.tyres), confirmedName: names[carId] }))
+    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: tyresInput(c.tyres), media: mediaInput(c.media, c.asNew), confirmedName: names[carId] }))
 
 // ---- 2. the cars ---------------------------------------------------------------------------------------------
 
@@ -173,7 +175,7 @@ function CarsStep({
 
   // A car the person has not touched yet: not picked; once picked, the app's match if it has one, else a new car.
   const choiceOf = (offer: Offer): Choice =>
-    choices[offer.car.id] ?? { picked: false, asNew: offer.suggestedTargetId == null, target: offer.suggestedTargetId ?? null, policy: 'IMPORT_THE_REST', kinds: defaultKinds(), tyres: defaultTyres() }
+    choices[offer.car.id] ?? { picked: false, asNew: offer.suggestedTargetId == null, target: offer.suggestedTargetId ?? null, policy: 'IMPORT_THE_REST', kinds: defaultKinds(), tyres: defaultTyres(), media: defaultMedia() }
   const set = (offer: Offer, change: Partial<Choice>) => onChoices({ ...choices, [offer.car.id]: { ...choiceOf(offer), ...change } })
   const picked = data.cars.filter((o) => choiceOf(o).picked)
   const problemOf = (offer: Offer): string | null => {
@@ -214,7 +216,7 @@ function CarsStep({
           showUnits={!usual || usual.distanceUnit !== offer.car.distanceUnit || usual.volumeUnit !== offer.car.volumeUnit}
           token={token}
           // What is chosen per kind is about one target: another target, or a new car, starts from only the missing again.
-          onChange={(change) => set(offer, 'asNew' in change || 'target' in change ? { ...change, kinds: defaultKinds(), tyres: defaultTyres() } : change)}
+          onChange={(change) => set(offer, 'asNew' in change || 'target' in change ? { ...change, kinds: defaultKinds(), tyres: defaultTyres(), media: defaultMedia() } : change)}
         />
       ))}
       {picked.length === 0 && (
@@ -306,7 +308,7 @@ function CarCard({
                   </RadioGroup>
                 </>
               ))}
-            {comparable && <KindsDisclosure token={token} car={car} target={target} kinds={choice.kinds} onKinds={(kinds) => onChange({ kinds })} tyres={choice.tyres} onTyres={(tyres) => onChange({ tyres })} />}
+            {comparable && <KindsDisclosure token={token} car={car} target={target} kinds={choice.kinds} onKinds={(kinds) => onChange({ kinds })} tyres={choice.tyres} onTyres={(tyres) => onChange({ tyres })} media={choice.media} onMedia={(media) => onChange({ media })} />}
             {problem && (
               <Typography id={note} variant="body2" role="status" sx={{ color: 'error.main' }}>
                 {problem}
@@ -366,6 +368,7 @@ function ReviewStep({
         deleted: replaced.map((k) => ({ kind: k.kind as Kind, count: k.targetLive + k.targetTrashed })),
         trashed: replaced.reduce((sum, k) => sum + k.targetTrashed, 0),
         linksLost: car.linksLost,
+        photosLost: replaced.reduce((sum, k) => sum + k.photosLost, 0),
       }
     })
   const begin = (names: Record<string, string>) => {
@@ -377,7 +380,7 @@ function ReviewStep({
   return (
     <Stack sx={{ gap: 2, alignItems: 'stretch' }}>
       {review.data.backupImportReview.map((car) => (
-        <ReviewCard key={car.carId} car={car} kinds={choices[car.carId]?.kinds ?? defaultKinds()} tyres={choices[car.carId]?.tyres ?? defaultTyres()} policy={choices[car.carId]?.policy ?? 'IMPORT_THE_REST'} onPolicy={(policy) => onChoices({ ...choices, [car.carId]: { ...choices[car.carId], policy } })} />
+        <ReviewCard key={car.carId} car={car} kinds={choices[car.carId]?.kinds ?? defaultKinds()} tyres={choices[car.carId]?.tyres ?? defaultTyres()} media={choices[car.carId]?.media ?? defaultMedia()} policy={choices[car.carId]?.policy ?? 'IMPORT_THE_REST'} onPolicy={(policy) => onChoices({ ...choices, [car.carId]: { ...choices[car.carId], policy } })} />
       ))}
       <Typography variant="body2">{t('import.plan.yours')}</Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -410,9 +413,10 @@ function ReviewStep({
   )
 }
 
-function ReviewCard({ car, kinds, tyres, policy, onPolicy }: { car: CarReview; kinds: Kinds; tyres: TyreChoice; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
+function ReviewCard({ car, kinds, tyres, media, policy, onPolicy }: { car: CarReview; kinds: Kinds; tyres: TyreChoice; media: MediaChoice; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
   const { t } = useTranslation()
   const tyreLines = useTyreReviewLines()
+  const mediaLines = useMediaReviewLines()
   const line = useKindLine()
   const heading = useId()
   const existing = car.existingRefuelings + car.existingExpenses + car.existingSchedules
@@ -473,7 +477,7 @@ function ReviewCard({ car, kinds, tyres, policy, onPolicy }: { car: CarReview; k
           <Typography component="li" variant="body2">
             {car.links ? t('import.kinds.links') : t('import.kinds.noLinks')}
           </Typography>
-          {tyreLines(car, tyres).map((line) => (
+          {[...tyreLines(car, tyres), ...mediaLines(car, media)].map((line) => (
             <Typography key={line} component="li" variant="body2">
               {line}
             </Typography>
@@ -525,6 +529,30 @@ function useTyreReviewLines() {
     if (tyres.noSetLines && car.tyres.noSetLines > 0) lines.push(t('import.tyres.noSetLines', { count: car.tyres.noSetLines, expenses: car.tyres.noSetExpenses }))
     if (coming.length > 0) lines.push(t('import.tyres.reminders'))
     return lines
+  }
+}
+
+/** The review's lines about a car's media (#339): photos, the picture, charts, the dashboards, by the choice. */
+function useMediaReviewLines() {
+  const { t } = useTranslation()
+  return (car: CarReview, choice: MediaChoice): string[] => {
+    const m = car.media
+    if (!m) return []
+    const target = car.targetName ?? ''
+    const { picture, dashboard } = mediaInput(choice, car.targetName == null)
+    const lines: string[] = []
+    if (m.photosLeftOut) lines.push(t('import.media.noPhotos'))
+    else if (choice.photos && m.photosNew + m.photosHere > 0) lines.push(t('import.media.photos', { count: m.photosNew, same: m.photosHere }))
+    if (m.picture)
+      lines.push(picture ? (m.targetPicture ? t('import.media.pictureReplaces', { target }) : t('import.media.pictureComes')) : m.targetPicture ? t('import.media.pictureKept', { target }) : '')
+    if (choice.charts && m.chartsNew + m.chartsHere > 0) {
+      lines.push(t('import.media.charts', { count: m.chartsNew, same: m.chartsHere }))
+      if (m.ownChartsNew > 0) lines.push(t('import.media.ownCharts', { count: m.ownChartsNew }))
+    }
+    if (m.dashboard)
+      lines.push(dashboard ? (m.targetDashboard ? t('import.media.dashboardReplaces', { target }) : t('import.media.dashboardComes')) : m.targetDashboard ? t('import.media.dashboardKept', { target }) : '')
+    if (dashboard && m.ownDashboard) lines.push(t('import.media.ownDashboard'))
+    return lines.filter((line) => line !== '')
   }
 }
 
@@ -644,7 +672,6 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
         // A car with a Replace all that was put back (#338): left exactly as it was, for an entry that could not be saved or for a
         // photo or tyre log line one of its entries got since the review.
         const putBack = car.leftOut && car.replacing
-        const heldKind = own?.key === 'import.replaceHeldBack' && (own.args as { kind?: string } | null)?.kind === 'expense' ? 'expense' : 'refueling'
         const refusedKind = (refused[0]?.kind === 'expense' || refused[0]?.kind === 'recurring' ? refused[0].kind : 'refueling') as Kind
         const perKind = !car.leftOut && car.kinds.some((k) => k.mode !== 'ONLY_MISSING')
         return (
@@ -658,7 +685,7 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
                   : t('import.plan.cardNew', { car: car.name })}
             </Typography>
             {putBack && own?.key === 'import.replaceHeldBack' ? (
-              <Typography variant="body2">{t(`import.kinds.${heldKind}.heldSince`, { car: car.targetName ?? car.name })}</Typography>
+              <Typography variant="body2">{t('import.kinds.expense.heldSince', { car: car.targetName ?? car.name })}</Typography>
             ) : putBack && !own ? (
               <Typography variant="body2">{t(`import.kinds.${refusedKind}.leftRefused`, { car: car.targetName ?? car.name })}</Typography>
             ) : perKind ? (
@@ -691,7 +718,7 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
                 <Stack component="ul" sx={{ gap: 0.5, m: 0, pl: 2.5 }}>
                   {refused.map((entry, i) => (
                     <Typography key={i} component="li" variant="body2">
-                      {t(`import.run.entry.${(['expense', 'recurring', 'tyreSet', 'tyreLines'] as const).find((k) => k === entry.kind) ?? 'refueling'}`, { date: entry.date ? date(entry.date) : '', title: entry.title ?? '' })}
+                      {t(`import.run.entry.${(['expense', 'recurring', 'tyreSet', 'tyreLines', 'photo', 'picture', 'chart', 'dashboard'] as const).find((k) => k === entry.kind) ?? 'refueling'}`, { date: entry.date ? date(entry.date) : '', title: entry.title ?? '' })}
                       {': '}
                       {keyText(entry.key, (entry.args ?? {}) as Record<string, unknown>) ?? entry.key}
                     </Typography>
@@ -713,6 +740,21 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
                     {t('import.tyres.amountsHere', { count: car.tyres.amountsHere })}
                   </Typography>
                 )}
+              </>
+            )}
+            {!car.leftOut && car.media && (
+              <>
+                {car.media.photos > 0 && <Typography variant="body2">{t('import.media.importedPhotos', { count: car.media.photos })}</Typography>}
+                {car.media.photosHere > 0 && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {t('import.media.photosHere', { count: car.media.photosHere })}
+                  </Typography>
+                )}
+                {car.media.picture && <Typography variant="body2">{t('import.media.importedPicture')}</Typography>}
+                {car.media.charts > 0 && <Typography variant="body2">{t('import.media.importedCharts', { count: car.media.charts })}</Typography>}
+                {car.media.dashboard && <Typography variant="body2">{t('import.media.importedDashboard')}</Typography>}
+                {car.media.ownDashboard && <Typography variant="body2">{t('import.media.importedOwnDashboard')}</Typography>}
+                {car.media.tilesLeftOut > 0 && <Typography variant="body2">{t('import.media.tilesLeftOut', { count: car.media.tilesLeftOut })}</Typography>}
               </>
             )}
             {car.vehicleId && !car.leftOut && (

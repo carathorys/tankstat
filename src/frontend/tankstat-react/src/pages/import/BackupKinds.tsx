@@ -21,7 +21,7 @@ import { useFormat } from '../../i18n/format.ts'
 import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { MEDIA } from '../../theme/media.ts'
-import { KINDS, tyresInput, useHeldBack, useKindLine, type CarReview, type Kind, type KindChoice, type KindReview, type Kinds, type TyreChoice } from './backupKinds.ts'
+import { KINDS, tyresInput, useHeldBack, useKindLine, type CarReview, type Kind, type KindChoice, type KindReview, type Kinds, type MediaChoice, type TyreChoice } from './backupKinds.ts'
 import { useKeyText } from '../../i18n/errors.ts'
 
 /**
@@ -36,6 +36,8 @@ export function KindsDisclosure({
   onKinds,
   tyres,
   onTyres,
+  media,
+  onMedia,
 }: {
   token: string
   car: { id: string; name: string; refuelings: number; expenses: number; schedules: number }
@@ -45,6 +47,8 @@ export function KindsDisclosure({
   onKinds: (kinds: Kinds) => void
   tyres: TyreChoice
   onTyres: (tyres: TyreChoice) => void
+  media: MediaChoice
+  onMedia: (media: MediaChoice) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -65,7 +69,7 @@ export function KindsDisclosure({
       <Stack id={panel} hidden={!open} sx={{ gap: 2, alignSelf: 'stretch', '&[hidden]': { display: 'none' } }}>
         {open &&
           (target ? (
-            <TargetKinds token={token} car={car} target={target} kinds={kinds} onKinds={onKinds} tyres={tyres} onTyres={onTyres} />
+            <TargetKinds token={token} car={car} target={target} kinds={kinds} onKinds={onKinds} tyres={tyres} onTyres={onTyres} media={media} onMedia={onMedia} />
           ) : (
             <>
               <Typography variant="body2">{t('import.kinds.newCar')}</Typography>
@@ -86,7 +90,7 @@ export function KindsDisclosure({
                   />
                 ))}
               </Stack>
-              <NewCarTyres token={token} car={car} tyres={tyres} onTyres={onTyres} />
+              <NewCarTyres token={token} car={car} tyres={tyres} onTyres={onTyres} media={media} onMedia={onMedia} />
             </>
           ))}
       </Stack>
@@ -102,6 +106,8 @@ function TargetKinds({
   onKinds,
   tyres,
   onTyres,
+  media,
+  onMedia,
 }: {
   token: string
   car: { id: string; name: string }
@@ -110,6 +116,8 @@ function TargetKinds({
   onKinds: (kinds: Kinds) => void
   tyres: TyreChoice
   onTyres: (tyres: TyreChoice) => void
+  media: MediaChoice
+  onMedia: (media: MediaChoice) => void
 }) {
   const { t } = useTranslation()
   const heldBack = useHeldBack()
@@ -184,17 +192,86 @@ function TargetKinds({
         )
       })}
       <TyreRows car={car} review={review} tyres={tyres} onTyres={onTyres} />
+      <MediaRows review={review} media={media} onMedia={onMedia} />
     </>
   )
 }
 
 /** A new car's tyres (#339): the same rows, every set new. */
-function NewCarTyres({ token, car, tyres, onTyres }: { token: string; car: { id: string; name: string }; tyres: TyreChoice; onTyres: (tyres: TyreChoice) => void }) {
+function NewCarTyres({
+  token,
+  car,
+  tyres,
+  onTyres,
+  media,
+  onMedia,
+}: {
+  token: string
+  car: { id: string; name: string }
+  tyres: TyreChoice
+  onTyres: (tyres: TyreChoice) => void
+  media: MediaChoice
+  onMedia: (media: MediaChoice) => void
+}) {
   const compared = useQuery(BackupImportReviewDocument, { variables: { token, cars: [{ carId: car.id, targetVehicleId: null }] }, fetchPolicy: 'network-only' })
   if (compared.error) return <ErrorMessage error={compared.error} />
   const review = (compared.data ?? compared.previousData)?.backupImportReview[0]
   if (!review) return <Loading />
-  return <TyreRows car={car} review={review} tyres={tyres} onTyres={onTyres} />
+  return (
+    <>
+      <TyreRows car={car} review={review} tyres={tyres} onTyres={onTyres} />
+      <MediaRows review={review} media={media} onMedia={onMedia} />
+    </>
+  )
+}
+
+/**
+ * The media's rows (#339, the owner's choice: boxes): the photos of entries (none when the backup was made without them), the car's
+ * picture (unticked when the car has one: ticked, the backup's replaces it for good), the charts, the dashboard (unticked when the car has
+ * its own: ticked, it replaces it for everyone who sees the car). A row the backup has nothing for is not shown.
+ */
+function MediaRows({ review, media, onMedia }: { review: CarReview; media: MediaChoice; onMedia: (media: MediaChoice) => void }) {
+  const { t } = useTranslation()
+  const ids = useId()
+  const m = review.media
+  // A picture or dashboard left as the car is: taken unless the car has one of its own, once the comparison says.
+  useEffect(() => {
+    if (!m || (media.picture !== null && media.dashboard !== null)) return
+    onMedia({ ...media, picture: media.picture ?? !m.targetPicture, dashboard: media.dashboard ?? !m.targetDashboard })
+  }, [m, media, onMedia])
+  if (!m) return null
+  const rows: { key: keyof MediaChoice; name: string; hint: string | null; on: boolean; disabled?: boolean; shown: boolean }[] = [
+    { key: 'photos', name: t('import.media.photosName'), hint: m.photosLeftOut ? t('import.media.noPhotos') : t('import.media.photosRow'), on: media.photos && !m.photosLeftOut, disabled: m.photosLeftOut, shown: m.photosLeftOut || m.photosNew + m.photosHere > 0 },
+    { key: 'picture', name: t('import.media.pictureName'), hint: m.targetPicture ? t('import.media.pictureRow') : null, on: media.picture ?? !m.targetPicture, shown: m.picture },
+    { key: 'charts', name: t('import.media.chartsName'), hint: t('import.media.chartsRow'), on: media.charts, shown: m.chartsNew + m.chartsHere > 0 },
+    { key: 'dashboard', name: t('import.media.dashboardName'), hint: m.targetDashboard ? t('import.media.dashboardRow') : null, on: media.dashboard ?? !m.targetDashboard, shown: m.dashboard || m.ownDashboard },
+  ]
+  return (
+    <Stack sx={{ gap: 0.5 }}>
+      {rows
+        .filter((row) => row.shown)
+        .map((row) => (
+          <Stack key={row.key}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={row.on}
+                  disabled={row.disabled}
+                  onChange={(e) => onMedia({ ...media, [row.key]: e.target.checked })}
+                  slotProps={{ input: { 'aria-describedby': row.hint ? `${ids}-${row.key}` : undefined } }}
+                />
+              }
+              label={row.name}
+            />
+            {row.hint && (
+              <Typography id={`${ids}-${row.key}`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+                {row.hint}
+              </Typography>
+            )}
+          </Stack>
+        ))}
+    </Stack>
+  )
 }
 
 /**
@@ -495,6 +572,8 @@ export interface Replacement {
   deleted: { kind: Kind; count: number }[]
   trashed: number
   linksLost: number
+  /** The car's photos the deleted entries take along that the backup does not bring back (#339). */
+  photosLost: number
 }
 
 const sameName = (typed: string, name: string) => typed.trim().toLowerCase() === name.trim().toLowerCase()
@@ -537,6 +616,7 @@ export function ReplaceConfirmations({ cars, onCancel, onConfirmed }: { cars: Re
       >
         {car.trashed > 0 && <Typography variant="body2">{t('import.kinds.confirm.trash', { count: car.trashed })}</Typography>}
         {car.linksLost > 0 && <Typography variant="body2">{t('import.kinds.confirm.links', { count: car.linksLost })}</Typography>}
+        {car.photosLost > 0 && <Typography variant="body2">{t('import.media.photosLost', { count: car.photosLost })}</Typography>}
         <Typography variant="body2">{t('import.kinds.confirm.undone')}</Typography>
         <Field name="confirmedName" label={t('import.kinds.confirm.field', { car: car.target })}>
           <FieldInput autoComplete="off" value={typed} onChange={(e) => setNames({ ...names, [car.carId]: e.target.value })} />

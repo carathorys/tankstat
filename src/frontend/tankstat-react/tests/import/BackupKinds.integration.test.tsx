@@ -20,13 +20,14 @@ afterEach(() => {
 afterAll(() => server.close())
 afterEach(() => {
   TYRES = {}
+  MEDIA = {}
 })
 
 type Mode = 'ONLY_MISSING' | 'DONT_IMPORT' | 'REPLACE_ALL' | 'CHOOSE'
 type Asked = { carId: string; targetVehicleId: string | null; refuelings?: { mode: Mode } | null; expenses?: { mode: Mode } | null; schedules?: { mode: Mode } | null; confirmedName?: string | null }
 
 const kindOf = (kind: string, over: Record<string, unknown> = {}) => ({
-  __typename: 'ImportKindReviewInfo', kind, mode: 'ONLY_MISSING', backup: 0, new: 0, differ: 0, same: 0, inTrash: 0, adds: 0, takes: 0, targetLive: 0, targetTrashed: 0, withPhotos: 0, onTyreLines: 0, ...over,
+  __typename: 'ImportKindReviewInfo', kind, mode: 'ONLY_MISSING', backup: 0, new: 0, differ: 0, same: 0, inTrash: 0, adds: 0, takes: 0, targetLive: 0, targetTrashed: 0, withPhotos: 0, onTyreLines: 0, photosLost: 0, ...over,
 })
 /** What the backup's Octavia is against My Octavia; the Fabia against Old Golf has expenses with photos and tyre log lines, and no recurring expenses. */
 const AGAINST: Record<string, Record<string, Record<string, number>>> = {
@@ -47,6 +48,12 @@ const offer = (id: string, name: string, state: string, over: Record<string, unk
 })
 /** The tyres each car's review answers with (#339); none unless a test sets them. */
 let TYRES: Record<string, unknown> = {}
+/** The media each car's review answers with (#339); none unless a test sets them. */
+let MEDIA: Record<string, unknown> = {}
+const mediaOf = (over: Record<string, unknown> = {}) => ({
+  __typename: 'ImportMediaReviewInfo', photosNew: 3, photosHere: 1, photosLeftOut: false, picture: true, targetPicture: true, chartsNew: 2, chartsHere: 0, ownChartsNew: 1,
+  dashboard: true, targetDashboard: true, ownDashboard: true, ...over,
+})
 const review = (car: Asked) => {
   const modes = { refueling: car.refuelings?.mode, expense: car.expenses?.mode, recurring: car.schedules?.mode } as Record<string, Mode | undefined>
   const names = { c1: ['Octavia', 'My Octavia'], c2: ['Fabia', 'Old Golf'] } as Record<string, string[]>
@@ -55,6 +62,7 @@ const review = (car: Asked) => {
     newRefuelings: 0, newExpenses: 0, newSchedules: 0, existingRefuelings: 0, existingExpenses: 0, existingSchedules: 0, differing: 0, inTrash: 0,
     links: modes.expense !== 'DONT_IMPORT' && modes.recurring !== 'DONT_IMPORT', linksLost: modes.recurring === 'REPLACE_ALL' ? 2 : 0,
     tyres: TYRES[car.carId] ?? NO_TYRES,
+    media: MEDIA[car.carId] ?? null,
     kinds: ['refueling', 'expense', 'recurring'].map((kind) => kindOf(kind, { ...(car.targetVehicleId ? AGAINST[car.carId][kind] : {}), mode: modes[kind] ?? 'ONLY_MISSING', adds: 4, takes: 1 })),
   }
 }
@@ -77,7 +85,7 @@ const run = (state: string, over: Record<string, unknown> = {}) => ({
 })
 const reportCar = (over: Record<string, unknown> = {}) => ({
   __typename: 'ImportCarReportInfo', carId: 'c1', name: 'Octavia', vehicleId: 'v1', targetName: 'My Octavia', asNew: false, leftOut: false,
-  refuelings: 60, expenses: 2, schedules: 0, existing: 4, differing: 4, inTrash: 0, refusedMore: 0, refused: [], replacing: false, links: 1, kinds: [], tyres: null, ...over,
+  refuelings: 60, expenses: 2, schedules: 0, existing: 4, differing: 4, inTrash: 0, refusedMore: 0, refused: [], replacing: false, links: 1, kinds: [], tyres: null, media: null, ...over,
 })
 const kindReport = (kind: string, mode: Mode, imported: number, changed: number, deleted: number) => ({ __typename: 'ImportKindReportInfo', kind, mode, imported, changed, deleted })
 
@@ -160,16 +168,16 @@ it('what to import is closed at first; open, each kind says what the backup has 
   expect(within(car).queryByText('Only what is missing is imported.')).not.toBeInTheDocument()
 })
 
-it('Replace all is held back with its reason: photos, tyre log lines, or a kind the backup has none of; and a car with every kind left out holds Next back', async () => {
+it('Replace all is held back with its reason: tyre log lines, or a kind the backup has none of (photos no longer); and a car with every kind left out holds Next back', async () => {
   const { ui } = await cars()
   const car = await open(ui, 'Fabia')
 
+  // A photo holds nothing back since #339: it comes back with its entry, and the confirmation counts those that do not.
   const fuel = within(await car.findByRole('radiogroup', { name: 'Refuellings of Fabia' })).getByRole('radio', { name: 'Replace all' })
-  expect(fuel).toBeDisabled()
-  expect(fuel).toHaveAccessibleDescription('Replace all is not available yet: 1 of your refuellings have photos, which a backup cannot bring back until photos can be imported.')
+  expect(fuel).toBeEnabled()
   const expenses = within(car.getByRole('radiogroup', { name: 'Expenses of Fabia' })).getByRole('radio', { name: 'Replace all' })
   expect(expenses).toBeDisabled()
-  expect(car.getAllByText('Replace all is not available yet: 2 of your expenses have photos and 1 belong to tyre log lines, which a backup cannot bring back until photos and tyres can be imported.').length).toBeGreaterThan(0)
+  expect(expenses).toHaveAccessibleDescription('Replace all is not available yet: 1 of your expenses belong to tyre log lines, whose amounts a backup cannot bring back to a set that stays.')
   const schedules = within(car.getByRole('radiogroup', { name: 'Recurring expenses of Fabia' })).getByRole('radio', { name: 'Replace all' })
   expect(schedules).toBeDisabled()
   expect(schedules).toHaveAccessibleDescription('The backup has no recurring expenses, so there is nothing to replace yours with.')
@@ -197,7 +205,7 @@ it('a new car brings each kind whole or not at all, a box per kind with its coun
   const card = await screen.findByRole('region', { name: 'Octavia · a new car' })
   expect(within(card).getByText('No recurring expenses are imported.')).toBeInTheDocument()
   expect(within(card).getByText('Visits come without their link: expenses and recurring expenses are not both imported.')).toBeInTheDocument()
-  expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: null, schedules: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true } }])
+  expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: null, schedules: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: true, charts: true, dashboard: true } }])
 })
 
 it('the dialog picks entry by entry: tick and untick all, show more, keep mine or take the backup\'s for one or for all; Done says it on the kind', async () => {
@@ -241,7 +249,7 @@ it('the dialog picks entry by entry: tick and untick all, show more, keep mine o
   expect(await car.findByText("2 of 55 new are added; 2 of 3 that differ take the backup's values.")).toBeInTheDocument()
   // The picks travel as a default and its exceptions.
   await ui.click(screen.getByRole('button', { name: 'Next' }))
-  await waitFor(() => expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: 'v1', refuelings: { mode: 'CHOOSE', addNew: false, newExceptions: ['n1', 'n55'], takeBackups: true, differExceptions: ['d2'] }, tyres: { except: [], noSetLines: true } }]))
+  await waitFor(() => expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: 'v1', refuelings: { mode: 'CHOOSE', addNew: false, newExceptions: ['n1', 'n55'], takeBackups: true, differExceptions: ['d2'] }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: false, charts: true, dashboard: false } }]))
 })
 
 it('the review says what each kind\'s choice does; a car with a Replace all is all or nothing and asks for its name, one car after the other', async () => {
@@ -288,8 +296,8 @@ it('the review says what each kind\'s choice does; a car with a Replace all is a
 
   await waitFor(() => expect(calls.starts).toHaveLength(1))
   expect(calls.starts[0].cars).toEqual([
-    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', refuelings: { mode: 'REPLACE_ALL' }, expenses: { mode: 'CHOOSE', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] }, schedules: { mode: 'REPLACE_ALL' }, confirmedName: '  my octavia ', tyres: { except: [], noSetLines: true } },
-    { carId: 'c2', targetVehicleId: 'v2', policy: 'IMPORT_THE_REST', refuelings: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true } },
+    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', refuelings: { mode: 'REPLACE_ALL' }, expenses: { mode: 'CHOOSE', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] }, schedules: { mode: 'REPLACE_ALL' }, confirmedName: '  my octavia ', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: false, charts: true, dashboard: false } },
+    { carId: 'c2', targetVehicleId: 'v2', policy: 'IMPORT_THE_REST', refuelings: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: false, charts: true, dashboard: false } },
   ])
 })
 
@@ -350,7 +358,7 @@ it('the report says per kind what was replaced, imported and changed, and a car 
   expect(refused.queryByRole('link')).not.toBeInTheDocument()
   const held = within(screen.getByRole('region', { name: 'Golf' }))
   expect(held.getByRole('heading', { name: 'My Golf · left as it was' })).toBeInTheDocument()
-  expect(held.getByText('Nothing of My Golf was deleted or imported: since the review, one of its expenses got a photo or a tyre log line, which the backup could not bring back.')).toBeInTheDocument()
+  expect(held.getByText('Nothing of My Golf was deleted or imported: since the review, one of its expenses got a tyre log line, which the backup could not bring back.')).toBeInTheDocument()
   await check(view.container)
 })
 
@@ -440,4 +448,80 @@ it('a car can bring only its tyres: every log kind left out goes on while a set 
   await ui.click(within(car.getByRole('group', { name: 'Tyre sets of Octavia' })).getByRole('checkbox', { name: 'Nokian WR' }))
   expect(car.getByText('Choose at least one kind to import for Octavia, or leave the car out.')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+})
+
+it("the media come by their boxes: photos and charts ticked, the picture and the dashboard not over the car's own; the review and the choice say it", async () => {
+  MEDIA = { c1: mediaOf() }
+  const { calls, view, ui } = await cars()
+  const car = await open(ui, 'Octavia')
+
+  const photos = await car.findByRole('checkbox', { name: 'Photos of entries' })
+  expect(photos).toBeChecked()
+  const picture = car.getByRole('checkbox', { name: "The car's picture" })
+  expect(picture).not.toBeChecked() // My Octavia has one
+  expect(picture).toHaveAccessibleDescription("Ticked, the backup's replaces it for good.")
+  expect(car.getByRole('checkbox', { name: 'Charts' })).toBeChecked()
+  const dashboard = car.getByRole('checkbox', { name: 'The dashboard' })
+  expect(dashboard).not.toBeChecked()
+  expect(dashboard).toHaveAccessibleDescription("Ticked, the backup's replaces it for everyone who sees this car.")
+  await check(view.container)
+
+  await ui.click(car.getByRole('checkbox', { name: 'Charts' }))
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  const card = within(await screen.findByRole('region', { name: 'Octavia · added to your car My Octavia' }))
+  expect(card.getByText('3 photos of entries that are imported or already here are new; 1 are already here.')).toBeInTheDocument()
+  expect(card.getByText("Your My Octavia has one; the backup's is not taken.")).toBeInTheDocument()
+  expect(card.queryByText(/shared charts are new/)).not.toBeInTheDocument() // unticked
+  expect(card.getByText(/^Your My Octavia has its own; the backup's is not taken unless you tick it/)).toBeInTheDocument()
+  expect(calls.reviews.at(-1)?.[0]).toMatchObject({ media: { photos: true, picture: false, charts: false, dashboard: false } })
+})
+
+it("a new car takes its picture and dashboard, says the charts and the importer's own coming back, and a backup without photos says so", async () => {
+  MEDIA = { c1: mediaOf({ photosLeftOut: true, photosNew: 0, photosHere: 0, targetPicture: false, targetDashboard: false }) }
+  const { calls, ui } = await cars()
+  const car = await screen.findByRole('region', { name: 'Octavia' })
+  await ui.click(within(car).getByRole('checkbox', { name: 'Octavia' }))
+  await ui.click(within(car).getByRole('checkbox', { name: 'As a new car' }))
+  await ui.click(within(car).getByRole('button', { name: 'Choose what to import' }))
+  const photos = await within(car).findByRole('checkbox', { name: 'Photos of entries' })
+  expect(photos).toBeDisabled()
+  expect(photos).toHaveAccessibleDescription('This backup was made without the photos of entries; none can be imported.')
+  expect(within(car).getByRole('checkbox', { name: "The car's picture" })).toBeChecked()
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+
+  const card = within(await screen.findByRole('region', { name: 'Octavia · a new car' }))
+  expect(card.getByText('This backup was made without the photos of entries; none can be imported.')).toBeInTheDocument()
+  expect(card.getByText("The backup's picture comes with the car.")).toBeInTheDocument()
+  expect(card.getByText("2 shared charts are new; 0 are already here. Charts that were someone's own are not imported.")).toBeInTheDocument()
+  expect(card.getByText('1 of them is your own, and comes back to you.')).toBeInTheDocument()
+  expect(card.getByText("The backup's dashboard comes with the car.")).toBeInTheDocument()
+  expect(card.getByText('Your own dashboard of this car comes back to you.')).toBeInTheDocument()
+  expect(calls.reviews.at(-1)?.[0]).toMatchObject({ media: { picture: true, dashboard: true } })
+})
+
+it('the confirmation of a Replace all counts the photos the backup does not bring back, and the report says the media that came', async () => {
+  const replaced = await cars(run('DONE', { report: [reportCar({ media: { __typename: 'ImportMediaReportInfo', photos: 3, photosHere: 1, picture: true, charts: 2, chartsHere: 0, dashboard: true, ownDashboard: true, tilesLeftOut: 1 } })] }))
+  const done = within(await screen.findByRole('region', { name: 'Octavia' }))
+  expect(done.getByText('Imported 3 photos.')).toBeInTheDocument()
+  expect(done.getByText('1 photo was there already.')).toBeInTheDocument()
+  expect(done.getByText("Imported the car's picture.")).toBeInTheDocument()
+  expect(done.getByText('Imported 2 charts.')).toBeInTheDocument()
+  expect(done.getByText('Imported the dashboard.')).toBeInTheDocument()
+  expect(done.getByText('Imported your own dashboard.')).toBeInTheDocument()
+  expect(done.getByText('1 tile of the dashboard was left out: its chart did not come.')).toBeInTheDocument()
+  replaced.view.unmount()
+
+  AGAINST.c1.refueling.photosLost = 3
+  try {
+    const { ui } = await cars()
+    const octavia = await open(ui, 'Octavia')
+    await ui.click(within(await octavia.findByRole('radiogroup', { name: 'Refuellings of Octavia' })).getByRole('radio', { name: 'Replace all' }))
+    await ui.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByRole('region', { name: 'Octavia · added to your car My Octavia' })
+    await ui.click(screen.getByRole('button', { name: 'Import' }))
+    const confirm = within(await screen.findByRole('alertdialog', { name: 'Delete and replace?' }))
+    expect(confirm.getByText('3 of their photos are not in the backup and are lost for good.')).toBeInTheDocument()
+  } finally {
+    AGAINST.c1.refueling.photosLost = 0
+  }
 })

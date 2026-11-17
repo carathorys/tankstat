@@ -987,7 +987,8 @@
       "replaceNotConfirmed": "A törlés megerősítéséhez írd be az autó nevét.",
       "replaceNothing": "A mentésben nincs ilyen fajta adat, így nincs mire cserélni a tiédet.",
       "tooManyChoices": "Túl sok bejegyzést választottál ki egyenként. Használd a Mind bejelölése vagy a Jelölések törlése gombot, majd módosítsd azt a néhányat, amelyik eltér.",
-      "unknownKind": "Nincs ilyen fajta bejegyzés."
+      "unknownKind": "Nincs ilyen fajta bejegyzés.",
+      "photoMissing": "A mentésben nincs fájl ehhez a képhez."
     },
     "chart": {
       "invalid": "Ez a grafikon nem érvényes.",
@@ -1495,7 +1496,11 @@
         "expense": "{{title}} ({{date}})",
         "recurring": "{{title}} (ismétlődő kiadás)",
         "tyreSet": "A(z) {{title}} gumiszett",
-        "tyreLines": "Szetthez nem kötött sorok"
+        "tyreLines": "Szetthez nem kötött sorok",
+        "photo": "Egy fotó",
+        "picture": "Az autó képe",
+        "chart": "A(z) {{title}} diagram",
+        "dashboard": "Az irányítópult"
       },
       "nothing": "Semmi nem lett importálva: az autóid változatlanok.",
       "failure": {
@@ -1582,9 +1587,7 @@
         "imported_one": "{{count}} tankolás importálva; {{taken}} átvette a mentés értékeit.",
         "imported_other": "{{count}} tankolás importálva; {{taken}} átvette a mentés értékeit.",
         "leftRefused": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került bele: a mentés egyik tankolását nem sikerült menteni.",
-        "modesLabel": "Tankolások: {{car}}",
-        "heldPhotos": "A Mindet cseréld még nem érhető el: a tankolásaid közül {{photos}} fényképes; ezeket a mentés nem tudja visszahozni, amíg fényképek nem importálhatók.",
-        "heldSince": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került bele: az áttekintés óta az egyik tankolása fényképet vagy gumiabroncs-naplósort kapott, amit a mentés nem tudna visszahozni."
+        "modesLabel": "Tankolások: {{car}}"
       },
       "expense": {
         "name": "Kiadások",
@@ -1609,10 +1612,8 @@
         "imported_other": "{{count}} kiadás importálva; {{taken}} átvette a mentés értékeit.",
         "leftRefused": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került bele: a mentés egyik kiadását nem sikerült menteni.",
         "modesLabel": "Kiadások: {{car}}",
-        "heldPhotos": "A Mindet cseréld még nem érhető el: a kiadásaid közül {{photos}} fényképes; ezeket a mentés nem tudja visszahozni, amíg fényképek nem importálhatók.",
-        "heldLines": "A Mindet cseréld még nem érhető el: a kiadásaid közül {{lines}} gumiabroncs-naplósorhoz tartozik; ezeket a mentés nem tudja visszahozni, amíg gumik nem importálhatók.",
-        "heldBoth": "A Mindet cseréld még nem érhető el: a kiadásaid közül {{photos}} fényképes, {{lines}} pedig gumiabroncs-naplósorhoz tartozik; ezeket a mentés nem tudja visszahozni, amíg fényképek és gumik nem importálhatók.",
-        "heldSince": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került bele: az áttekintés óta az egyik kiadása fényképet vagy gumiabroncs-naplósort kapott, amit a mentés nem tudna visszahozni."
+        "heldLines": "A Mindet cseréld még nem érhető el: a kiadásaid közül {{lines}} gumiabroncs-naplósorhoz tartozik, amelynek összegét a mentés nem tudja visszahozni egy megmaradó szetthez.",
+        "heldSince": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került bele: az áttekintés óta az egyik kiadása gumiabroncs-naplósort kapott, amit a mentés nem tudna visszahozni."
       },
       "recurring": {
         "name": "Ismétlődő kiadások",
@@ -1662,6 +1663,43 @@
       "importedNoSet_other": "{{count}} szetthez nem kötött sor importálva a gumi naplóba.",
       "amountsHere_one": "Soraik közül {{count}} összege már szerepel a kiadásaid között: ott marad, a sor pedig nélküle jön.",
       "amountsHere_other": "Soraik közül {{count}} összege már szerepel a kiadásaid között: ott maradnak, a sorok pedig nélkülük jönnek."
+    },
+    "media": {
+      "photosName": "A bejegyzések fotói",
+      "pictureName": "Az autó képe",
+      "chartsName": "Diagramok",
+      "dashboardName": "Az irányítópult",
+      "photosRow": "A fotók a bejegyzéseikkel jönnek (az importáltakkal vagy a már meglévőkkel).",
+      "noPhotos": "Ez a mentés a bejegyzések fotói nélkül készült; egyet sem lehet importálni.",
+      "pictureRow": "Ha bejelölöd, a mentésé végleg lecseréli.",
+      "chartsRow": "A megosztott diagramok, és a saját diagramjaid.",
+      "dashboardRow": "Ha bejelölöd, a mentésé mindenkinél lecseréli, aki látja az autót.",
+      "photos_one": "{{count}} fotó új az importált vagy már meglévő bejegyzésekhez; {{same}} már megvan.",
+      "photos_other": "{{count}} fotó új az importált vagy már meglévő bejegyzésekhez; {{same}} már megvan.",
+      "pictureKept": "A(z) {{target}} autódnak van képe; a mentését nem vesszük át.",
+      "pictureComes": "A mentés képe az autóval jön.",
+      "pictureReplaces": "A mentés képe végleg lecseréli a(z) {{target}} autód képét.",
+      "charts_one": "{{count}} megosztott diagram új; {{same}} már megvan. Valaki saját diagramjait nem importáljuk.",
+      "charts_other": "{{count}} megosztott diagram új; {{same}} már megvan. Valaki saját diagramjait nem importáljuk.",
+      "ownCharts_one": "Közülük {{count}} a saját diagramod, és visszakerül hozzád.",
+      "ownCharts_other": "Közülük {{count}} a saját diagramod, és visszakerülnek hozzád.",
+      "dashboardKept": "A(z) {{target}} autódnak saját irányítópultja van; a mentését csak akkor vesszük át, ha bejelölöd (mindenkinél lecserélné, aki látja az autót).",
+      "dashboardComes": "A mentés irányítópultja az autóval jön.",
+      "dashboardReplaces": "A mentés irányítópultja mindenkinél lecseréli a(z) {{target}} autód irányítópultját, aki látja.",
+      "ownDashboard": "Az autó saját irányítópultod visszakerül hozzád.",
+      "importedPhotos_one": "{{count}} fotó importálva.",
+      "importedPhotos_other": "{{count}} fotó importálva.",
+      "photosHere_one": "{{count}} fotó már megvolt.",
+      "photosHere_other": "{{count}} fotó már megvolt.",
+      "importedPicture": "Az autó képe importálva.",
+      "importedCharts_one": "{{count}} diagram importálva.",
+      "importedCharts_other": "{{count}} diagram importálva.",
+      "importedDashboard": "Az irányítópult importálva.",
+      "importedOwnDashboard": "A saját irányítópultod importálva.",
+      "tilesLeftOut_one": "Az irányítópult {{count}} csempéje kimaradt: a diagramja nem jött.",
+      "tilesLeftOut_other": "Az irányítópult {{count}} csempéje kimaradt: a diagramjaik nem jöttek.",
+      "photosLost_one": "Közülük {{count}} fotó nincs a mentésben, és végleg elvész.",
+      "photosLost_other": "Közülük {{count}} fotó nincs a mentésben, és végleg elvész."
     }
   },
   "welcome": {
