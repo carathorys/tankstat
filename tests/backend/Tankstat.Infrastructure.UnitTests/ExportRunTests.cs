@@ -58,6 +58,29 @@ public sealed partial class BackupImportRunTests
     private Task<ExportView?> MyExportAsync(TestDatabase database, Principal who) => AsAsync(database, who, sp => sp.GetRequiredService<ExportService>().MineAsync(default));
 
     [Fact]
+    public async Task TwoStartsAtOnce_TheEarlierRunGivesWay_NeverLeftRunningOutOfReach()
+    {
+        var here = ExportInstance("export-race", new StuckWriter(fail: false));
+        var anna = await PersonAsync(here, "Anna");
+        var golf = await CarWithFillsAsync(here, anna, "Golf");
+        var first = (await StartExportAsync(here, anna, golf)).Record;
+
+        // A second start that passed its cancel before the first was there (two tabs at once): the runner takes it in the first one's place.
+        var files = here.Get<IExportFiles>();
+        var second = first with { Id = Guid.NewGuid() };
+        files.Save(second);
+        var runner = here.Get<ExportRunner>();
+        runner.Start(new ExportJob(second, new ExportWriteRequest(anna.Id, [new ExportCar(golf, ExportKinds.All)], null, files.FileOf(second.Id))));
+
+        // The first gives way at once, and a cancel reaches the second: nothing is left running.
+        for (var i = 0; i < 250 && files.Records().Single(r => r.Id == first.Id).State == ExportState.Building; i++) await Task.Delay(20);
+        Assert.Equal(ExportState.Cancelled, files.Records().Single(r => r.Id == first.Id).State);
+        Assert.True(runner.Cancel(anna.Id));
+        await runner.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(runner.IsRunning(first.Id) || runner.IsRunning(second.Id));
+    }
+
+    [Fact]
     public async Task AnExport_IsBuilt_Kept_ReplacedByTheNext_DeletedAfterItsHours_AndThoseItConcernsAreTold()
     {
         var here = ExportInstance("export");

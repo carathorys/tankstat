@@ -37,14 +37,19 @@ internal sealed class ExportRunner(
     {
         var stop = CancellationTokenSource.CreateLinkedTokenSource(lifetime?.ApplicationStopping ?? CancellationToken.None);
         var running = new Running(job, stop);
-        _byOwner[job.Record.OwnerId] = running;
+        // One per person: a run still under way (two starts at once, from two tabs) gives way, never left running out of reach of Cancel.
+        _byOwner.AddOrUpdate(job.Record.OwnerId, running, (_, earlier) =>
+        {
+            StopRun(earlier);
+            return running;
+        });
         running.Task = Task.Run(() => RunAsync(running));
     }
 
     public bool Cancel(Guid ownerId)
     {
         if (!_byOwner.TryGetValue(ownerId, out var running)) return false;
-        running.Stop.Cancel();
+        StopRun(running);
         return true;
     }
 
@@ -52,7 +57,19 @@ internal sealed class ExportRunner(
     {
         if (!_byOwner.TryGetValue(ownerId, out var running)) return;
         running.Forgotten = true;
-        running.Stop.Cancel();
+        StopRun(running);
+    }
+
+    /// <summary>Asks a run to stop; one that ended meanwhile has disposed of its token source and needs nothing.</summary>
+    private static void StopRun(Running running)
+    {
+        try
+        {
+            running.Stop.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     public ExportProgress? ProgressOf(Guid id) => _byOwner.Values.FirstOrDefault(r => r.Job.Record.Id == id)?.Progress;
@@ -68,15 +85,23 @@ internal sealed class ExportRunner(
         try
         {
             var written = await writer.WriteAsync(job.Request, p => running.Progress = p, running.Stop.Token);
-            // Written: the person's earlier export goes now, never before; a newer one being built (it could not stop this one in time) stays.
-            foreach (var old in files.Records().Where(r => r.OwnerId == record.OwnerId && r.Id != record.Id && r.State != ExportState.Building))
-            {
-                files.DeleteFile(old.Id);
-                files.DeleteRecord(old.Id);
-            }
             var now = clock.GetUtcNow();
             record = record with { State = ExportState.Ready, ReadyAt = now, KeptUntil = now + options.CurrentValue.Keep, Bytes = written.Bytes };
             files.Save(record);
+            // Written and recorded: the person's earlier export goes now, never before; a newer one being built (it could not stop this one in
+            // time) stays. One that cannot be deleted now is no failure of this one: the sweep or the next export takes it.
+            try
+            {
+                foreach (var old in files.Records().Where(r => r.OwnerId == record.OwnerId && r.Id != record.Id && r.State != ExportState.Building))
+                {
+                    files.DeleteFile(old.Id);
+                    files.DeleteRecord(old.Id);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning("Export {ExportId} is ready, but the earlier export could not be deleted ({Failure})", record.Id, e.GetType().Name);
+            }
             logger.LogInformation("User {UserId} exported {Cars} cars in export {ExportId}: {Bytes} bytes, {Encryption}",
                 record.OwnerId, written.Cars, record.Id, written.Bytes, record.Encrypted ? "encrypted" : "in plain");
             if (!running.Forgotten) await TellAsync(n => n.ReadyAsync(record, CancellationToken.None), record);
@@ -85,6 +110,7 @@ internal sealed class ExportRunner(
         catch (Exception) when (running.Stop.IsCancellationRequested)
         {
             var interrupted = lifetime?.ApplicationStopping.IsCancellationRequested == true;
+            DeleteOwnFile(record.Id); // a stop that came after the file was moved into place: nothing of it is kept either
             files.Save(record with { State = interrupted ? ExportState.Interrupted : ExportState.Cancelled });
             logger.LogInformation("Export {ExportId} of user {UserId} was {End}; nothing of it was kept", record.Id, record.OwnerId, interrupted ? "interrupted" : "cancelled");
         }
@@ -92,11 +118,12 @@ internal sealed class ExportRunner(
         {
             var key = e is KeyedException keyed ? keyed.Key : "export.failed";
             record = record with { State = ExportState.Failed, FailureKey = key };
+            DeleteOwnFile(record.Id); // a failure after the file was moved into place (its record not saved) leaves no file the sweep never meets
             files.Save(record);
             // The type only: a database error quotes values, here someone's cars.
             logger.LogError("Export {ExportId} of user {UserId} failed ({Failure}); nothing of it was kept", record.Id, record.OwnerId, e.GetType().Name);
             logger.LogDebug(e, "Export {ExportId}: the failure", record.Id);
-            await TellAsync(n => n.FailedAsync(record, CancellationToken.None), record);
+            if (!running.Forgotten) await TellAsync(n => n.FailedAsync(record, CancellationToken.None), record); // a deleted account is told nothing
         }
         finally
         {
@@ -108,6 +135,18 @@ internal sealed class ExportRunner(
             }
             _byOwner.TryRemove(new KeyValuePair<Guid, Running>(record.OwnerId, running));
             running.Stop.Dispose();
+        }
+    }
+
+    private void DeleteOwnFile(Guid id)
+    {
+        try
+        {
+            files.DeleteFile(id);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning("Export {ExportId} ended without a file, but what it wrote could not be deleted ({Failure})", id, e.GetType().Name);
         }
     }
 
