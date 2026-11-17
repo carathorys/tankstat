@@ -414,6 +414,33 @@ public sealed partial class BackupImportRunTests
         Assert.Contains(await ToldOfAsync(here, anna.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "back" && n.Args["count"] == "1");
     }
 
+    [Theory, MemberData(nameof(Providers))]
+    public async Task APurgedCarWhoseOwnerIsDisabled_IsOfferedAsItsOwnerHavingNoAccount(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, ada) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true));
+        var golf = await AsAsync(here, anna, async sp =>
+            (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id);
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        await AsAsync(here, anna, async sp =>
+        {
+            await sp.GetRequiredService<VehicleService>().DeleteAsync(golf, default);
+            return await sp.GetRequiredService<VehicleService>().EmptyTrashAsync(default);
+        });
+        var users = here.Get<Tankstat.Application.Users.IUserRepository>();
+        var account = (await users.FindByIdAsync(anna.Id, default))!;
+        account.SetDisabled(true);
+        await users.UpdateAsync(account, default);
+
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var page = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().CarsAsync(status.Token, null, null, 0, 50, default));
+        // As the run counts it: the administrator picks who gets it (themselves unless they choose), never a car the run would leave out.
+        Assert.Equal(RestoreCarState.OwnerGone, page.Cars.Single(c => c.Car.Id == golf).State);
+        var review = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().ReviewAsync(status.Token, [new(golf, null)], default));
+        Assert.Equal((RestoreCarState.OwnerGone, "Ada"), (review[0].Restore!.State, review[0].Restore!.OwnerName));
+    }
+
     public static TheoryData<string, bool> Elsewhere => new() { { "Sqlite", false }, { "PostgreSql", false }, { "SqlServer", false }, { "Sqlite", true } };
 
     [Theory, MemberData(nameof(Elsewhere))]
