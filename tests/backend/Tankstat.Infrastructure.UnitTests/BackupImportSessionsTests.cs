@@ -202,6 +202,46 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
         Assert.Equal((95m, "EUR", 10_200L), (read.Expenses.Single(e => e.Id == visit).Values.Amount, read.Expenses.Single(e => e.Id == visit).Values.Currency, read.Expenses.Single(e => e.Id == visit).Values.Odometer));
     }
 
+    /// <summary>
+    /// A car's rows are the uploader's and the scratch database enforces no lengths (#337): a text longer than the app itself allows was
+    /// never written by it, so the car is refused as no backup when it is read, before its rows are loaded, and none of it is logged.
+    /// </summary>
+    [Theory]
+    [InlineData("Refuelings", "kept")]
+    [InlineData("Expenses", "Car wash")]
+    public async Task ACarWithATextLongerThanTheAppAllows_IsNoBackup_WhenItIsRead(string table, string text)
+    {
+        var database = Instance();
+        Guid car;
+        await using (var scope = database.Services.CreateAsyncScope())
+        {
+            var services = scope.ServiceProvider;
+            car = (await services.GetRequiredService<Tankstat.Application.Vehicles.VehicleService>()
+                .AddAsync("Octavia", null, Tankstat.Domain.Vehicles.FuelType.Diesel, Tankstat.Domain.Measurements.MeasurementUnits.Metric, default)).Id;
+            await services.GetRequiredService<Tankstat.Application.Refuelings.RefuelingService>().LogAsync(car, new(new DateOnly(2026, 3, 1), 40, 60, "EUR", 10_000, true, "kept"), default);
+            await services.GetRequiredService<Tankstat.Application.Expenses.ExpenseService>().AddAsync(car, new(new DateOnly(2026, 3, 2), "Car wash", null, 12, "EUR", null, null), default);
+        }
+        var backup = await database.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var forged = Forged(backup.Path, inner: zip =>
+        {
+            var entry = zip.GetEntry($"tables/{table}.jsonl")!;
+            string rows;
+            using (var reader = new StreamReader(entry.Open())) rows = reader.ReadToEnd();
+            entry.Delete();
+            using var written = zip.CreateEntry($"tables/{table}.jsonl").Open();
+            written.Write(Encoding.UTF8.GetBytes(rows.Replace($"\"{text}\"", $"\"zzcanary{new string('x', 600)}\"")));
+        });
+
+        var uploaded = await UploadAsync(database, Alice, forged);
+        var opened = await SettledAsync(database, Alice, uploaded.Token);
+        Assert.Equal(BackupImportState.Opened, opened.State); // the open only counts the rows
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => database.Get<IBackupImportSessions>().Cars(Alice, uploaded.Token)!.ReadCarAsync(car, default));
+
+        Assert.Equal("import.notABackup", refused.Key);
+        Assert.False(database.Log.Mentions("zzcanary"));
+    }
+
     [Fact]
     public async Task AFileWithoutCars_AndACarWithoutAPlate_AreOpened()
     {

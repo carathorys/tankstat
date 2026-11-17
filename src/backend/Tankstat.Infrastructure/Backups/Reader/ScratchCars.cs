@@ -3,6 +3,8 @@ using Tankstat.Application.Backups;
 using Tankstat.Application.Imports;
 using Tankstat.Domain;
 using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Infrastructure.Backups.Reader;
 
@@ -14,6 +16,12 @@ namespace Tankstat.Infrastructure.Backups.Reader;
 internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary summary) : IBackupCars, IAsyncDisposable
 {
     public const int MaxCars = 10_000;
+
+    /// <summary>The most entries of one kind a car is read with: far past what a car gathers (a fill-up a day for a century is 36,500).</summary>
+    public const int MaxRowsPerCar = 50_000;
+
+    /// <summary>An ISO 4217 code, as the model maps a cost's currency.</summary>
+    private const int MaxCurrencyLength = 3;
 
     public BackupFileSummary Summary { get; } = summary;
 
@@ -54,9 +62,20 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
     public async Task<BackupCar?> ReadCarAsync(Guid carId, CancellationToken ct)
     {
         if (Summary.Cars.FirstOrDefault(c => c.Id == carId) is not { } car) return null;
+        // More entries than any car has is no backup of ours: refused before a row is read.
+        if (car.Refuelings > MaxRowsPerCar || car.Expenses > MaxRowsPerCar || car.Schedules > MaxRowsPerCar) throw NotABackup();
         try
         {
             await using var db = database.Read();
+            // The rows are the uploader's and the scratch database enforces no lengths: a row may be a megabyte and a car's rows together
+            // gigabytes. A text longer than the app itself allows was never written by it, so the database is asked first, and such a
+            // file is no backup before any of its rows is on the heap.
+            if (await db.Refuelings.AnyAsync(r => r.VehicleId == carId && (r.Note!.Length > Refueling.MaxNoteLength || r.Cost!.Currency.Length > MaxCurrencyLength), ct)
+                || await db.Expenses.AnyAsync(e => e.VehicleId == carId && (e.Title.Length > Expense.MaxTitleLength || e.Category!.Length > Expense.MaxCategoryLength
+                    || e.Note!.Length > Expense.MaxNoteLength || e.Cost!.Currency.Length > MaxCurrencyLength), ct)
+                || await db.RecurringExpenses.AnyAsync(s => s.VehicleId == carId && (s.Title.Length > RecurringExpense.MaxTitleLength
+                    || s.Category!.Length > RecurringExpense.MaxCategoryLength || s.Note!.Length > RecurringExpense.MaxNoteLength), ct))
+                throw NotABackup();
             var refuelings = await db.Refuelings.Include(r => r.Cost).Include(r => r.OdometerReading)
                 .Where(r => r.VehicleId == carId).OrderBy(r => r.Date).ThenBy(r => r.Id).ToListAsync(ct);
             var expenses = await db.Expenses.Include(e => e.Cost).Include(e => e.OdometerReading)
