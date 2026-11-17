@@ -167,7 +167,7 @@ internal static class BackupUnpack
     /// a stand-in of its type (one made from the row's id where the column must be unique). Worked out from the backup migration's own
     /// model, so a column a later release added is blanked too.
     /// </summary>
-    private sealed class UserReduction
+    internal sealed class UserReduction
     {
         private readonly List<(string Column, bool Keep, bool Nullable, bool Unique, Type Type)> _columns = [];
 
