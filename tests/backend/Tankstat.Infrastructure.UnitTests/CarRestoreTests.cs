@@ -293,16 +293,17 @@ public sealed partial class BackupImportRunTests
     {
         if (Instance(provider, "here") is not { } here) return;
         var (anna, ada) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true));
-        var golf = await AsAsync(here, anna, async sp =>
+        var (golf, photo) = await AsAsync(here, anna, async sp =>
         {
             var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
             var fills = sp.GetRequiredService<RefuelingService>();
             var first = (await fills.LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default)).Id;
             await fills.UpdateAsync(first, new(Day, 41, 61, "EUR", 10_000, true, "edited"), default); // version 2
             await fills.LogAsync(golf, new(Day.AddDays(10), 38, 57, "EUR", 10_600, true, null), default);
-            return golf;
+            // A photo of a refuelling the Replace all purges and the restore brings back: the same log, the same image id, the same file.
+            return (golf, await sp.GetRequiredService<LogPhotoService>().AddAsync(LogType.Refueling, first, Png(1), default));
         });
-        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(Photos: true), default);
         var before = await RowsOfAsync(here, golf);
         await AsAsync(here, anna, async sp =>
         {
@@ -314,7 +315,7 @@ public sealed partial class BackupImportRunTests
 
         var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
         for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
-        var replace = new ImportCarKinds(Refuelings: new ImportKindChoice(ImportKindMode.ReplaceAll), Tyres: new ImportTyreChoice([]), Media: new ImportMediaChoice(false, false, false, false, false));
+        var replace = new ImportCarKinds(Refuelings: new ImportKindChoice(ImportKindMode.ReplaceAll), Tyres: new ImportTyreChoice([]), Media: new ImportMediaChoice(true, false, false, false, false));
         var unconfirmed = await Assert.ThrowsAsync<DomainException>(() => AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null, Kinds: replace)], default)));
         Assert.Equal(BackupImportRules.ReplaceNotConfirmedKey, unconfirmed.Key);
         var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null, Kinds: replace, ConfirmedName: "golf")], default));
@@ -323,6 +324,10 @@ public sealed partial class BackupImportRunTests
         var after = await RowsOfAsync(here, golf);
         Assert.Equal(before["Refuelings"], after["Refuelings"]); // the backup's two, under their ids, by Anna, at their versions
         Assert.Equal(anna.Id, Assert.Single(after["Vehicles"].Select(l => Guid.Parse(l.Split(' ')[2]))));
+        // The purged photo's file went after the commit, never the one the restore wrote in its place.
+        var image = await here.Get<IImageRepository>().FindAsync(photo, default);
+        Assert.NotNull(image);
+        await using (var stream = await here.Get<IImageStore>().OpenReadAsync(image, default)) Assert.NotNull(stream);
         var told = Assert.Single(await ToldOfAsync(here, anna.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored);
         Assert.Equal(("replaced", "2", "refueling"), (told.Args["how"], told.Args["count"], told.Args["kinds"]));
     }

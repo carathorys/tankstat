@@ -275,7 +275,13 @@ public sealed class ImageService(
             throw;
         }
         // Inside a run (#339: an import's photos and picture) the row may still be rolled back: its file goes with it.
-        RunContext.Current?.Run?.OnRollback(() => store.DeleteAsync(image, CancellationToken.None));
+        // A partial restore (#340) stores an image under the id of one a Replace all purged in the same run (the same file): rolled back,
+        // that row is back and keeps the file.
+        RunContext.Current?.Run?.OnRollback(async () =>
+        {
+            if (await images.FindAsync(image.Id, CancellationToken.None) is not { } back || back.Folder != image.Folder)
+                await store.DeleteAsync(image, CancellationToken.None);
+        });
         return image.Id;
     }
 
@@ -298,7 +304,14 @@ public sealed class ImageService(
         if (id is null || await images.FindAsync(id.Value, ct) is not { } image) return;
         await images.RemoveAsync(image.Id, ct);
         // Inside a run (#339) the row's removal may still be rolled back: the file goes once the run commits, never before.
-        if (RunContext.Current?.Run is { } run) run.AfterCommit(() => store.DeleteAsync(image, CancellationToken.None));
+        // A partial restore (#340) may store the same image again under its id after a Replace all's purge (the same log, the same
+        // folder, so the same file): the file stays then.
+        if (RunContext.Current?.Run is { } run)
+            run.AfterCommit(async () =>
+            {
+                if (await images.FindAsync(image.Id, CancellationToken.None) is not { } again || again.Folder != image.Folder)
+                    await store.DeleteAsync(image, CancellationToken.None);
+            });
         else await store.DeleteAsync(image, ct);
     }
 }
