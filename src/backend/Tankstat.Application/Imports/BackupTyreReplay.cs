@@ -14,14 +14,16 @@ public sealed record TyreReplayed(Guid SetId, int Installations, int Lines, int 
 /// The car's expenses no tyre log line holds (#339: never a cost twice): an expenses-only import brought a tyre cost as a plain expense,
 /// and a later tyres import finds it here, by its day, title (without case) and amount, instead of making it again.
 /// </summary>
-public sealed class ImportExpensePool(IEnumerable<(Guid Id, DateOnly Date, string Title, decimal? Amount)> free)
+/// <param name="byId">A partial restore's (#340): the same expense is the one with the backup's id, never one that looks the same.</param>
+public sealed class ImportExpensePool(IEnumerable<(Guid Id, DateOnly Date, string Title, decimal? Amount)> free, bool byId = false)
 {
     private List<(Guid Id, DateOnly Date, string Title, decimal? Amount)> _free = [.. free.Select(f => (f.Id, f.Date, f.Title.Trim().ToLowerInvariant(), f.Amount))];
 
-    public Guid? Take(ExpenseInput values)
+    /// <param name="backupId">The backup's id of the expense, which a pool by id goes by.</param>
+    public Guid? Take(ExpenseInput values, Guid backupId = default)
     {
         var title = values.Title.Trim().ToLowerInvariant();
-        var at = _free.FindIndex(f => f.Date == values.Date && f.Title == title && f.Amount == values.Amount);
+        var at = byId ? _free.FindIndex(f => f.Id == backupId) : _free.FindIndex(f => f.Date == values.Date && f.Title == title && f.Amount == values.Amount);
         if (at < 0) return null;
         var id = _free[at].Id;
         _free.RemoveAt(at);
@@ -49,10 +51,12 @@ public sealed class ImportExpensePool(IEnumerable<(Guid Id, DateOnly Date, strin
 /// </summary>
 public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
 {
-    private sealed class Run(TyreBook backup, ImportExpensePool? pool)
+    /// <param name="keepIds">A partial restore's (#340): every row keeps the backup's id (a place's id follows from its tyre's and its time's).</param>
+    private sealed class Run(TyreBook backup, ImportExpensePool? pool, bool keepIds)
     {
         public TyreBook Backup { get; } = backup;
         public ImportExpensePool? Pool { get; } = pool;
+        public bool KeepIds { get; } = keepIds;
         public Dictionary<Guid, Guid> Ids { get; } = [];
         public List<(Guid NewId, ExpenseInput Values)> Fees { get; } = [];
         private readonly Dictionary<Guid, TyreFee?> _fees = [];
@@ -62,7 +66,7 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
 
         public Guid New(Guid old)
         {
-            if (!Ids.TryGetValue(old, out var made)) Ids[old] = made = Guid.NewGuid();
+            if (!Ids.TryGetValue(old, out var made)) Ids[old] = made = keepIds ? old : Guid.NewGuid();
             return made;
         }
 
@@ -81,7 +85,7 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
             if (ExpenseOf(line) is not { } values) return null;
             var old = line.ExpenseId!.Value;
             if (_fees.TryGetValue(old, out var known)) return known;
-            if (Pool?.Take(values) is not null)
+            if (Pool?.Take(values, old) is not null)
             {
                 AmountsHere++;
                 return _fees[old] = null;
@@ -96,9 +100,9 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
     /// <summary>The live rows of one set (or of no set) in the backup's book.</summary>
     private static IReadOnlyList<TyreEntry> LinesOf(TyreBook book, Guid? setId) => [.. book.Entries.Where(e => e.SetId == setId && book.IsLive(e))];
 
-    public async Task<TyreReplayed> SetAsync(Guid vehicleId, TyreBook backup, TyreSet set, CancellationToken ct, ImportExpensePool? pool = null)
+    public async Task<TyreReplayed> SetAsync(Guid vehicleId, TyreBook backup, TyreSet set, CancellationToken ct, ImportExpensePool? pool = null, bool keepIds = false)
     {
-        var run = new Run(backup, pool);
+        var run = new Run(backup, pool, keepIds);
         var newSet = run.New(set.Id);
         var installations = backup.Installations.Where(i => i.SetId == set.Id && !i.IsDeleted).OrderBy(i => i.From).ToList();
         var lines = LinesOf(backup, set.Id);
@@ -190,9 +194,10 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
     }
 
     /// <summary>The tyre log's lines of no set (#339, the owner's decision 6): replayed as a set's other lines.</summary>
-    public async Task<TyreReplayed> LinesOfNoSetAsync(Guid vehicleId, TyreBook backup, IReadOnlyCollection<Guid>? only, CancellationToken ct, ImportExpensePool? pool = null)
+    public async Task<TyreReplayed> LinesOfNoSetAsync(Guid vehicleId, TyreBook backup, IReadOnlyCollection<Guid>? only, CancellationToken ct, ImportExpensePool? pool = null,
+        bool keepIds = false)
     {
-        var run = new Run(backup, pool);
+        var run = new Run(backup, pool, keepIds);
         foreach (var group in LinesOf(backup, null).Where(l => only is null || only.Contains(l.Id)).GroupBy(l => l.GroupId ?? l.Id).OrderBy(g => g.Min(l => l.Day)))
             await LinesAsync(run, vehicleId, null, [.. group], ct);
         await FeesAsync(run, ct);
@@ -213,7 +218,7 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
         {
             var details = new ExpenseTyreDetails(first.Kind, setId, tyreLines, LineId: single ? null : run.New(first.Id));
             Guid expenseId;
-            if (run.Pool?.Take(values) is { } here)
+            if (run.Pool?.Take(values, first.ExpenseId!.Value) is { } here)
             {
                 // The same expense is the car's already, a plain one (an expenses-only import brought it): the lines are tied to it.
                 run.Ids[first.ExpenseId!.Value] = expenseId = here;
@@ -260,8 +265,11 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
         var unmatched = have.ToList();
         foreach (var want in places.OrderBy(p => p.From))
         {
-            var match = unmatched.FirstOrDefault(h => h.TyreId == run.New(want.TyreId) && h.InstallationId == run.New(want.InstallationId) && h.From == want.From)
-                ?? unmatched.FirstOrDefault(h => h.TyreId == run.New(want.TyreId) && h.InstallationId == run.New(want.InstallationId));
+            // A restore keeps ids (#340): the replay's place with the backup's id is that place, whatever its times are now, and one the
+            // replay made under another id (a tyre handed over a place the original made anew) is not: it goes, and the backup's comes.
+            var match = run.KeepIds ? unmatched.FirstOrDefault(h => h.Id == want.Id)
+                : unmatched.FirstOrDefault(h => h.TyreId == run.New(want.TyreId) && h.InstallationId == run.New(want.InstallationId) && h.From == want.From)
+                    ?? unmatched.FirstOrDefault(h => h.TyreId == run.New(want.TyreId) && h.InstallationId == run.New(want.InstallationId));
             if (match is null) continue;
             unmatched.Remove(match);
             pairs.Add((want, match));
@@ -273,7 +281,7 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
             await tyres.UpdatePlaceAsync(h.Id, new TyrePlaceInput(want.From, want.Until, want.Corner), ct);
         foreach (var extra in unmatched) await tyres.TrashPlaceAsync(extra.Id, ct);
         foreach (var missing in places.Where(w => pairs.All(p => p.Want != w)))
-            await tyres.AddPlaceAsync(run.New(missing.TyreId), new TyrePlaceInput(missing.From, missing.Until, missing.Corner), ct);
+            await tyres.AddPlaceAsync(run.New(missing.TyreId), new TyrePlaceInput(missing.From, missing.Until, missing.Corner), ct, id: run.KeepIds ? missing.Id : null);
     }
 
     /// <summary>A fee's expense as the backup has it: a fee makes it with an amount, currency, category and title only.</summary>

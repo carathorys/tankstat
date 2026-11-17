@@ -60,19 +60,23 @@ public sealed record ImportCarKinds(
 /// of each kind (null: only the missing, #337's way). <see cref="ConfirmedName"/>: the target's name as the person typed it, which a
 /// <i>Replace all</i> asks for.
 /// </summary>
+/// <param name="OwnerId">A partial restore's (#340): who gets a gone car whose owner has no account (the administrator picks; null = them).</param>
 public sealed record ImportCarChoice(
-    Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy Policy = RefusedEntryPolicy.ImportTheRest, ImportCarKinds? Kinds = null, string? ConfirmedName = null);
+    Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy Policy = RefusedEntryPolicy.ImportTheRest, ImportCarKinds? Kinds = null, string? ConfirmedName = null,
+    Guid? OwnerId = null);
 
 /// <summary>A chosen car in a run's plan, with the names it had when the person pressed Import.</summary>
-public sealed record ImportCarPlan(Guid CarId, string Name, Guid? TargetVehicleId, string? TargetName, RefusedEntryPolicy Policy, int Entries, ImportCarKinds? Kinds = null)
+/// <param name="OwnerId">A partial restore's (#340): the owner a gone car comes back to, decided when the run was queued.</param>
+public sealed record ImportCarPlan(Guid CarId, string Name, Guid? TargetVehicleId, string? TargetName, RefusedEntryPolicy Policy, int Entries, ImportCarKinds? Kinds = null,
+    Guid? OwnerId = null)
 {
     /// <summary>A <i>Replace all</i> into an own car: one refusal puts the whole car back (the owner's decision 1).</summary>
     [JsonIgnore]
     public bool Replacing => TargetVehicleId is not null && (Kinds ?? ImportCarKinds.Missing).All.Any(k => k.Mode == ImportKindMode.ReplaceAll);
 }
 
-/// <summary>What a run is to do.</summary>
-public sealed record ImportRunPlan(IReadOnlyList<ImportCarPlan> Cars);
+/// <summary>What a run is to do. <see cref="Restore"/>: a partial restore (#340), whose file is a restore point and whose cars keep their ids.</summary>
+public sealed record ImportRunPlan(IReadOnlyList<ImportCarPlan> Cars, bool Restore = false, DateTimeOffset? BackupOf = null);
 
 /// <summary>
 /// An entry that could not be saved: what it is (its kind, its day, a title for an expense or a schedule), and the reason as the server
@@ -91,7 +95,14 @@ public sealed record ImportRefusedEntry(string Kind, DateOnly? Date, string? Tit
 public sealed record ImportCarReport(
     Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules,
     int Existing, int Differing, int InTrash, IReadOnlyList<ImportRefusedEntry> Refused, int RefusedMore,
-    IReadOnlyList<ImportKindReport>? Kinds = null, bool Replacing = false, int Links = 0, ImportTyreReport? Tyres = null, ImportMediaReport? Media = null);
+    IReadOnlyList<ImportKindReport>? Kinds = null, bool Replacing = false, int Links = 0, ImportTyreReport? Tyres = null, ImportMediaReport? Media = null,
+    ImportRestoreReport? Restore = null);
+
+/// <summary>
+/// What a partial restore did besides the entries (#340): whose the car is, whether it came back whole (it was gone), the grants written,
+/// the people who had access but have no account (by their name in the backup), and the private widgets and own dashboards left out.
+/// </summary>
+public sealed record ImportRestoreReport(Guid OwnerId, bool CameBack, int Grants, IReadOnlyList<string> GoneGrantees, int PeopleLeftOut);
 
 /// <summary>
 /// What came of a car's tyres (#339): the sets imported by name, their lines and single tyres, the lines of no set, the expenses their

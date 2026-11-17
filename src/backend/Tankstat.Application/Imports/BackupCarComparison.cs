@@ -47,13 +47,14 @@ public sealed record BackupCarComparison(
 /// </summary>
 public static class BackupCarComparer
 {
-    public static BackupCarComparison Compare(BackupCar backup, BackupCar target) => new(
-        Kind(backup.Refuelings, target.Refuelings, r => r.Id, r => r.Values, r => (r.Values.Date, r.Values.Odometer), r => r.Values.Date),
-        Kind(backup.Expenses, target.Expenses, e => e.Id, e => e.Values, e => (e.Values.Date, e.Values.Title.Trim().ToLowerInvariant(), e.Values.Amount), e => e.Values.Date),
-        Kind(backup.Schedules, target.Schedules, s => s.Id, s => s.Values, s => s.Values.Title.Trim().ToLowerInvariant(), _ => default));
+    /// <param name="byKey">False for a partial restore (#340): an entry is the target's by its id alone, never by a key.</param>
+    public static BackupCarComparison Compare(BackupCar backup, BackupCar target, bool byKey = true) => new(
+        Kind(backup.Refuelings, target.Refuelings, r => r.Id, r => r.Values, r => (r.Values.Date, r.Values.Odometer), r => r.Values.Date, byKey),
+        Kind(backup.Expenses, target.Expenses, e => e.Id, e => e.Values, e => (e.Values.Date, e.Values.Title.Trim().ToLowerInvariant(), e.Values.Amount), e => e.Values.Date, byKey),
+        Kind(backup.Schedules, target.Schedules, s => s.Id, s => s.Values, s => s.Values.Title.Trim().ToLowerInvariant(), _ => default, byKey));
 
     private static BackupKindComparison<T> Kind<T, TValues, TKey>(
-        IReadOnlyList<T> backup, IReadOnlyList<T> target, Func<T, Guid> id, Func<T, TValues> values, Func<T, TKey> key, Func<T, DateOnly> date)
+        IReadOnlyList<T> backup, IReadOnlyList<T> target, Func<T, Guid> id, Func<T, TValues> values, Func<T, TKey> key, Func<T, DateOnly> date, bool matchByKey)
         where TKey : notnull where TValues : notnull
     {
         var byId = target.GroupBy(id).ToDictionary(g => g.Key, g => g.First());
@@ -63,7 +64,7 @@ public static class BackupCarComparer
         foreach (var entry in backup)
             if (byId.TryGetValue(id(entry), out var same) && taken.Add(id(same))) matched[id(entry)] = (same, true);
         var byKey = target.Where(t => !taken.Contains(id(t))).GroupBy(key).ToDictionary(g => g.Key, g => new Queue<T>(g.OrderBy(date).ThenBy(id)));
-        foreach (var entry in backup.Where(e => !matched.ContainsKey(id(e))).OrderBy(date).ThenBy(id))
+        foreach (var entry in backup.Where(e => matchByKey && !matched.ContainsKey(id(e))).OrderBy(date).ThenBy(id))
             if (byKey.TryGetValue(key(entry), out var free) && free.Count > 0) matched[id(entry)] = (free.Dequeue(), false);
 
         return new BackupKindComparison<T>([.. backup.Select(entry =>

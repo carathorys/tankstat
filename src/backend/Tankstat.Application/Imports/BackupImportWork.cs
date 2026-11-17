@@ -85,6 +85,7 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     public const string ReplaceNothingKey = "import.replaceNothing";
     public const string ReplaceNotConfirmedKey = "import.replaceNotConfirmed";
     public const string TooManyChoicesKey = "import.tooManyChoices";
+    public const string CarInTrashKey = "import.carInTrash";
 
     /// <summary>The ids a run's choices may name as exceptions, all cars together: they are kept in the run's plan.</summary>
     public const int MaxExceptions = 10_000;
@@ -104,6 +105,20 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
         return target;
     }
 
+    /// <summary>
+    /// A partial restore's target (#340, the owner's constraint: the car's id decides, never another car): the car with the same id here,
+    /// whoever's it is now; null when it is gone. One in the trash is refused (<c>import.carInTrash</c>: restore it from the trash or empty the
+    /// trash first); one in other units too.
+    /// </summary>
+    public async Task<Vehicle?> RestoreTargetAsync(BackupCarSummary car, CancellationToken ct)
+    {
+        if (await vehicles.FindIncludingDeletedAsync(car.Id, ct) is not { } here) return null;
+        if (here.IsDeleted) throw new DomainException(CarInTrashKey, "The car is in the trash here: restore it from the trash or empty the trash first.", new { Car = here.Name });
+        if (here.Units != car.Units)
+            throw new DomainException(UnitsDifferKey, "The backup's car and the target are in other units; nothing is converted.", new { Car = car.Name, Target = here.Name });
+        return here;
+    }
+
     /// <summary>The choices as a whole: every car is the file's, none twice, and no car of the person's is the target of two.</summary>
     public static void RequireSound(IReadOnlyCollection<ImportCarChoice> choices, BackupFileSummary file)
     {
@@ -119,18 +134,19 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     /// The backup's car against its target as it is now. What is only in the backup but matches an entry in the target's trash (by id,
     /// else by key, like the live ones) is counted apart: said and left (#337's decision 1), unless the kind is replaced.
     /// </summary>
-    public async Task<ImportCarComparison> CompareAsync(BackupCar car, Vehicle target, CancellationToken ct)
+    /// <param name="byId">A partial restore's (#340): the same entry is the one with its id, never one with the same key.</param>
+    public async Task<ImportCarComparison> CompareAsync(BackupCar car, Vehicle target, CancellationToken ct, bool byId = false)
     {
         var (live, trash) = (await targets.LiveAsync(target, ct), await targets.TrashAsync(target, ct));
         var held = await targets.HeldBackAsync(target, ct);
-        var compared = BackupCarComparer.Compare(car, live);
+        var compared = BackupCarComparer.Compare(car, live, byKey: !byId);
         var onlyThere = car with
         {
             Refuelings = [.. compared.Refuelings.Entries.Where(e => e.Match == BackupEntryMatch.OnlyInBackup).Select(e => e.Entry)],
             Expenses = [.. compared.Expenses.Entries.Where(e => e.Match == BackupEntryMatch.OnlyInBackup).Select(e => e.Entry)],
             Schedules = [],
         };
-        var trashed = BackupCarComparer.Compare(onlyThere, trash);
+        var trashed = BackupCarComparer.Compare(onlyThere, trash, byKey: !byId);
         return new ImportCarComparison(
             Kind(car.Refuelings, compared.Refuelings, trashed.Refuelings, live.Refuelings, trash.Refuelings.Count, held.RefuelingPhotos, 0),
             Kind(car.Expenses, compared.Expenses, trashed.Expenses, live.Expenses, trash.Expenses.Count, held.ExpensePhotos, held.ExpenseTyreLines),
@@ -155,11 +171,16 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     /// labels the car's tyres have is refused, with the reason the services give. In a car that is here, only the missing lines of no set
     /// come (by id, else by day, kind and amount).
     /// </summary>
-    public async Task<ImportTyreComparison> CompareTyresAsync(IBackupCars file, Guid carId, Vehicle? target, CancellationToken ct)
+    /// <param name="byId">
+    /// A partial restore's (#340): the same set, line or tyre is the one with its id, the trash included (a set in the car's trash stays
+    /// there, as it is), never one that looks the same.
+    /// </param>
+    public async Task<ImportTyreComparison> CompareTyresAsync(IBackupCars file, Guid carId, Vehicle? target, CancellationToken ct, bool byId = false)
     {
         var book = await file.ReadTyresAsync(carId, ct) ?? ImportTyreComparison.None.Backup;
         var here = target is null ? null : await tyreBooks.LoadAsync(target.Id, ct);
         var hereSets = here?.Sets.Where(s => !s.IsDeleted).ToList() ?? [];
+        var trashedIds = here?.Sets.Where(s => s.IsDeleted).Select(s => s.Id).ToHashSet() ?? [];
         static string Key(Domain.Tyres.TyreSet s) =>
             $"{s.Name.Trim().ToLowerInvariant()}|{s.Season}|{s.Size?.Trim().ToLowerInvariant()}|{s.Since.Year}-{s.Since.Month}";
         var taken = new HashSet<Guid>();
@@ -170,9 +191,9 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
             var installations = book.Installations.Where(i => i.SetId == set.Id && !i.IsDeleted).ToList();
             var singles = book.SingleTyres.Where(t => t.SetId == set.Id && !t.IsDeleted).ToList();
             var expenses = lines.Where(l => book.ExpenseOf(l) is { IsDeleted: false }).Select(l => l.ExpenseId).Distinct().Count();
-            var match = hereSets.FirstOrDefault(s => s.Id == set.Id && taken.Add(s.Id)) ?? hereSets.FirstOrDefault(s => Key(s) == Key(set) && taken.Add(s.Id));
+            var match = hereSets.FirstOrDefault(s => s.Id == set.Id && taken.Add(s.Id)) ?? (byId ? null : hereSets.FirstOrDefault(s => Key(s) == Key(set) && taken.Add(s.Id)));
             var (state, key, args) = (ImportSetState.New, (string?)null, (IReadOnlyDictionary<string, string>?)null);
-            if (match is not null) state = ImportSetState.Here;
+            if (match is not null || (byId && trashedIds.Contains(set.Id))) state = ImportSetState.Here;
             else if (here is not null && target is not null)
             {
                 try
@@ -193,8 +214,8 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
         var noSet = book.Entries.Where(e => e.SetId is null && book.IsLive(e)).ToList();
         if (here is not null)
         {
-            var hereLines = here.Entries.Where(e => e.SetId is null && here.IsLive(e)).Select(e => (e.Id, e.Day, e.Kind, Amount: here.ExpenseOf(e)?.Amount)).ToList();
-            noSet = [.. noSet.Where(l => !hereLines.Any(h => h.Id == l.Id || (h.Day == l.Day && h.Kind == l.Kind && h.Amount == book.ExpenseOf(l)?.Amount)))];
+            var hereLines = here.Entries.Where(e => e.SetId is null && (byId || here.IsLive(e))).Select(e => (e.Id, e.Day, e.Kind, Amount: here.ExpenseOf(e)?.Amount)).ToList();
+            noSet = [.. noSet.Where(l => !hereLines.Any(h => h.Id == l.Id || (!byId && h.Day == l.Day && h.Kind == l.Kind && h.Amount == book.ExpenseOf(l)?.Amount)))];
         }
         return new ImportTyreComparison(book, sets, noSet);
     }
@@ -317,7 +338,8 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
 /// </summary>
 public sealed class BackupImportWork(
     BackupImportRules rules, VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring,
-    BackupTyreReplay tyreReplay, BackupMediaWork mediaWork, IExpenseRepository expenseRows, Tyres.ITyreRepository tyreBooks, ILogger<BackupImportWork> logger)
+    BackupTyreReplay tyreReplay, BackupMediaWork mediaWork, IExpenseRepository expenseRows, Tyres.ITyreRepository tyreBooks,
+    IRestoreStamps stamps, Sharing.ResourceSharingService sharing, Users.IUserRepository users, Access.AccessService access, ILogger<BackupImportWork> logger)
 {
     /// <summary>The kinds of a refused tyre row (#339): a set (its name as the title), the lines of no set.</summary>
     public const string TyreSetKind = "tyreSet", NoSetLinesKind = "tyreLines";
@@ -341,7 +363,8 @@ public sealed class BackupImportWork(
             var before = done;
             try
             {
-                await run.InSavepointAsync(async () => report = await CarAsync(run, starter, file, car, chosen, () => progress(new ImportRunProgress(carNumber, plan.Cars.Count, ++done, total)), ct));
+                await run.InSavepointAsync(async () => report = await CarAsync(run, starter, file, car, chosen, () => progress(new ImportRunProgress(carNumber, plan.Cars.Count, ++done, total)), ct,
+                    plan.Restore));
             }
             catch (CarLeftOut left)
             {
@@ -363,7 +386,12 @@ public sealed class BackupImportWork(
     /// <summary>One save of the car's logs, in the order they are tried: by day, then by reading.</summary>
     private sealed record Step(DateOnly Date, long Order, string Kind, string? Title, Func<Task> Save, Action Saved);
 
-    private async Task<ImportCarReport> CarAsync(IRun run, Principal starter, IBackupCars file, BackupCar car, ImportCarPlan chosen, Action step, CancellationToken ct)
+    /// <param name="restore">
+    /// A partial restore (#340): the car of the same id is the target (a gone one comes back to its owner, with its sharing), every entry
+    /// is the car's by its id alone and comes under it, and last the rows it made get the backup's creators and versions.
+    /// </param>
+    private async Task<ImportCarReport> CarAsync(IRun run, Principal starter, IBackupCars file, BackupCar car, ImportCarPlan chosen, Action step, CancellationToken ct,
+        bool restore = false)
     {
         Vehicle vehicle;
         ImportCarComparison compared;
@@ -371,9 +399,40 @@ public sealed class BackupImportWork(
         var tyreChoice = chosen.Kinds?.Tyres;
         ImportCarWork work;
         var deleted = (Refuelings: 0, Expenses: 0, Schedules: 0);
+        BackupRestoreData? restoreData = null;
+        IReadOnlyDictionary<RestoreTable, IReadOnlySet<Guid>>? before = null;
+        ImportRestoreReport? restoreReport = null;
         try
         {
-            if (chosen.TargetVehicleId is { } targetId)
+            if (restore)
+            {
+                restoreData = await file.ReadRestoreAsync(car.Car.Id, ct) ?? throw new InvalidOperationException("A chosen car is no longer in the file.");
+                if (await rules.RestoreTargetAsync(car.Car, ct) is { } here)
+                {
+                    // Still here: only what is missing by id comes (unless chosen otherwise); its owner and sharing stay as they are today.
+                    vehicle = here;
+                    before = await stamps.IdsAsync(vehicle.Id, ct);
+                    compared = await rules.CompareAsync(car, vehicle, ct, byId: true);
+                    if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, vehicle, ct, byId: true);
+                    restoreReport = new ImportRestoreReport(vehicle.OwnerId, CameBack: false, 0, [], 0);
+                }
+                else
+                {
+                    // Gone: it comes back whole, to its owner (or the one picked), with its sharing for those who still have an account.
+                    var owner = chosen.OwnerId ?? car.Car.OwnerId;
+                    vehicle = await vehicles.RestoreAsync(car.Car.Id, owner, car.Car.Name, car.Car.LicensePlate, car.Car.FuelType, car.Car.Units, ct);
+                    compared = BackupImportRules.Whole(car);
+                    if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, null, ct, byId: true);
+                    var (granted, gone) = (new List<(Guid, Domain.Access.AccessLevel)>(), new List<string>());
+                    foreach (var grant in restoreData.Grants)
+                        if (grant.GranteeId == owner) continue;
+                        else if (await users.FindByIdAsync(grant.GranteeId, ct) is not null) granted.Add((grant.GranteeId, grant.Level));
+                        else gone.Add(grant.Name ?? "");
+                    var written = await sharing.RestoreLogAccessAsync(vehicle.Id, granted, ct);
+                    restoreReport = new ImportRestoreReport(owner, CameBack: true, written, gone, 0);
+                }
+            }
+            else if (chosen.TargetVehicleId is { } targetId)
             {
                 // Again, now that the run holds the car: what the review saw may have changed since (decisions 7, 8 and 11).
                 vehicle = await rules.TargetAsync(starter.Id, car.Car, targetId, ct);
@@ -428,11 +487,11 @@ public sealed class BackupImportWork(
         var steps = work.Refuelings.Takes.Select(t => new Step(t.Entry.Values.Date, t.Entry.Values.Odometer ?? 0, BackupImportRules.Refueling, null,
                 () => refuelings.UpdateAsync(t.TargetId, Whole(t.Entry.Values), ct, recalculateConsumption: false), () => fuelChanged++))
             .Concat(work.Refuelings.Adds.Select(r => new Step(r.Values.Date, r.Values.Odometer ?? 0, BackupImportRules.Refueling, null,
-                async () => fuelIds[r.Id] = (await refuelings.LogAsync(vehicle.Id, r.Values, ct, recalculateConsumption: false)).Id, () => fuelAdded++)))
+                async () => fuelIds[r.Id] = (await refuelings.LogAsync(vehicle.Id, r.Values, ct, recalculateConsumption: false, id: restore ? r.Id : null)).Id, () => fuelAdded++)))
             .Concat(work.Expenses.Takes.Select(t => new Step(t.Entry.Values.Date, t.Entry.Values.Odometer ?? 0, BackupImportRules.Expense, t.Entry.Values.Title,
                 () => expenses.UpdateAsync(t.TargetId, Whole(t.Entry.Values), ct), () => expensesChanged++)))
             .Concat(work.Expenses.Adds.Select(e => new Step(e.Values.Date, e.Values.Odometer ?? 0, BackupImportRules.Expense, e.Values.Title,
-                async () => expenseIds[e.Id] = (await expenses.AddAsync(vehicle.Id, e.Values, ct)).Id, () => expensesAdded++)))
+                async () => expenseIds[e.Id] = (await expenses.AddAsync(vehicle.Id, e.Values, ct, id: restore ? e.Id : null)).Id, () => expensesAdded++)))
             .OrderBy(s => s.Date).ThenBy(s => s.Order).ToList();
         while (steps.Count > 0)
         {
@@ -485,7 +544,8 @@ public sealed class BackupImportWork(
         foreach (var (schedule, targetId) in work.Schedules.Takes)
             await ScheduleAsync(schedule, () => recurring.UpdateAsync(targetId, schedule.Values, ct), () => schedulesChanged++);
         foreach (var schedule in work.Schedules.Adds)
-            await ScheduleAsync(schedule, async () => scheduleIds[schedule.Id] = (await recurring.AddAsync(vehicle.Id, schedule.Values, ct)).Item.Id, () => schedulesAdded++);
+            await ScheduleAsync(schedule, async () => scheduleIds[schedule.Id] = (await recurring.AddAsync(vehicle.Id, schedule.Values, ct, restore ? schedule.Id : null)).Item.Id,
+                () => schedulesAdded++);
 
         // The tyres (#339): set by set, each in a savepoint of its own, after the logs (their readings) and the schedules; then the lines
         // of no set. A set the rules refuse is a refused entry like a log's, under the car's policy (all or nothing with a Replace all).
@@ -494,7 +554,7 @@ public sealed class BackupImportWork(
         {
             var heldByLines = (await tyreBooks.LoadAsync(vehicle.Id, ct)).Entries.Where(e => e.ExpenseId is not null).Select(e => e.ExpenseId!.Value).ToHashSet();
             var pool = new ImportExpensePool((await expenseRows.ListAllForVehicleAsync(vehicle.Id, ct))
-                .Where(e => !heldByLines.Contains(e.Id)).Select(e => (e.Id, e.Date, e.Title, e.Amount)));
+                .Where(e => !heldByLines.Contains(e.Id)).Select(e => (e.Id, e.Date, e.Title, e.Amount)), byId: restore);
             var (names, lines, singles, noSet, made, amountsHere) = (new List<string>(), 0, 0, 0, 0, 0);
             // A set (or the lines of no set) whose replay is refused brings the expenses its lines hold as plain ones, as if the tyres had
             // not been chosen (the owner's answer on #374, after #334's rule): kept out of the expense step for the tyres, they would come
@@ -531,7 +591,7 @@ public sealed class BackupImportWork(
                 try
                 {
                     TyreReplayed? replayed = null;
-                    await run.InSavepointAsync(async () => replayed = await tyreReplay.SetAsync(vehicle.Id, tyres.Backup, set, ct, pool));
+                    await run.InSavepointAsync(async () => replayed = await tyreReplay.SetAsync(vehicle.Id, tyres.Backup, set, ct, pool, keepIds: restore));
                     names.Add(BackupCarShapes.Cut(set.Name)!);
                     (lines, singles, made, amountsHere) = (lines + replayed!.Lines, singles + replayed.Tyres, made + replayed.ExpensesMade, amountsHere + replayed.AmountsHere);
                     foreach (var (old, @new) in replayed.Ids) expenseIds.TryAdd(old, @new); // a tyre line's expense a visit marked done keeps its link
@@ -554,7 +614,8 @@ public sealed class BackupImportWork(
                 try
                 {
                     TyreReplayed? replayed = null;
-                    await run.InSavepointAsync(async () => replayed = await tyreReplay.LinesOfNoSetAsync(vehicle.Id, tyres.Backup, [.. tyres.NoSetLines.Select(l => l.Id)], ct, pool));
+                    await run.InSavepointAsync(async () => replayed = await tyreReplay.LinesOfNoSetAsync(vehicle.Id, tyres.Backup, [.. tyres.NoSetLines.Select(l => l.Id)], ct, pool,
+                        keepIds: restore));
                     (noSet, made, amountsHere) = (replayed!.Lines, made + replayed.ExpensesMade, amountsHere + replayed.AmountsHere);
                     foreach (var (old, @new) in replayed.Ids) expenseIds.TryAdd(old, @new);
                 }
@@ -583,9 +644,29 @@ public sealed class BackupImportWork(
 
         // The media (#339): the photos of the logs that are the car's now, the picture, the widgets, the dashboards.
         ImportMediaReport? mediaReport = null;
+        // A restore's people (#340, decision 5): a person's own widgets and dashboard come when they have an account and can see the car now.
+        var people = !restore ? null : new RestoreMedia(async (userId, token) =>
+            await users.FindByIdAsync(userId, token) is { } user && await access.LogLevelOfAsync(user.Id, user.IsAdmin, vehicle, token) >= Domain.Access.AccessLevel.View);
         if (chosen.Kinds?.Media is { } media)
             mediaReport = await mediaWork.RunAsync(run, file, car.Car.Id, vehicle, starter, media,
-                (type, log) => (type == Domain.Photos.LogType.Refueling ? fuelIds : expenseIds).TryGetValue(log, out var here) ? here : null, Refused, step, ct);
+                (type, log) => (type == Domain.Photos.LogType.Refueling ? fuelIds : expenseIds).TryGetValue(log, out var here) ? here : null, Refused, step, ct, people);
+
+        // Last (#340, decision 4): every row the restore made takes the backup's creator, version and creation time, and reads as restored
+        // by the administrator, today. After every save of it: the replay saves a row several times, each save moving its version.
+        if (restore && restoreData is not null)
+        {
+            var after = await stamps.IdsAsync(vehicle.Id, ct);
+            var backupPlaces = restoreData.Stamps.GetValueOrDefault(RestoreTable.TyrePlace) ?? new Dictionary<Guid, RestoreStamp>();
+            var leftovers = after[RestoreTable.TyrePlace].Where(id => !backupPlaces.ContainsKey(id) && before?.GetValueOrDefault(RestoreTable.TyrePlace)?.Contains(id) != true).ToList();
+            await stamps.RemoveLeftoverPlacesAsync(vehicle.Id, leftovers, ct);
+            foreach (var (table, ids) in after)
+            {
+                var made = ids.Where(id => before?.GetValueOrDefault(table)?.Contains(id) != true)
+                    .Select(id => restoreData.StampOf(table, id)).OfType<RestoreStamp>().ToList();
+                await stamps.StampAsync(table, made, starter.Id, ct);
+            }
+            restoreReport = restoreReport! with { PeopleLeftOut = people!.LeftOut };
+        }
 
         var left = Leftovers(compared, work);
         return new ImportCarReport(
@@ -596,7 +677,7 @@ public sealed class BackupImportWork(
                 new ImportKindReport(BackupImportRules.Refueling, work.Refuelings.Mode, fuelAdded, fuelChanged, deleted.Refuelings),
                 new ImportKindReport(BackupImportRules.Expense, work.Expenses.Mode, expensesAdded, expensesChanged, deleted.Expenses),
                 new ImportKindReport(BackupImportRules.Recurring, work.Schedules.Mode, schedulesAdded, schedulesChanged, deleted.Schedules),
-            ], work.Replacing, links, tyreReport, mediaReport);
+            ], work.Replacing, links, tyreReport, mediaReport, restoreReport);
     }
 
     /// <summary>What the car's choices leave as it is, all kinds together.</summary>
