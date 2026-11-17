@@ -21,7 +21,8 @@ import { useFormat } from '../../i18n/format.ts'
 import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { MEDIA } from '../../theme/media.ts'
-import { KINDS, useHeldBack, useKindLine, type Kind, type KindChoice, type KindReview, type Kinds } from './backupKinds.ts'
+import { KINDS, useHeldBack, useKindLine, type CarReview, type Kind, type KindChoice, type KindReview, type Kinds, type TyreChoice } from './backupKinds.ts'
+import { useKeyText } from '../../i18n/errors.ts'
 
 /**
  * *Choose what to import* under a ticked car (#338): closed at first. For a car added to one of the person's own, a block per kind with
@@ -33,6 +34,8 @@ export function KindsDisclosure({
   target,
   kinds,
   onKinds,
+  tyres,
+  onTyres,
 }: {
   token: string
   car: { id: string; name: string; refuelings: number; expenses: number; schedules: number }
@@ -40,6 +43,8 @@ export function KindsDisclosure({
   target: { id: string; name: string } | null
   kinds: Kinds
   onKinds: (kinds: Kinds) => void
+  tyres: TyreChoice
+  onTyres: (tyres: TyreChoice) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -60,7 +65,7 @@ export function KindsDisclosure({
       <Stack id={panel} hidden={!open} sx={{ gap: 2, alignSelf: 'stretch', '&[hidden]': { display: 'none' } }}>
         {open &&
           (target ? (
-            <TargetKinds token={token} car={car} target={target} kinds={kinds} onKinds={onKinds} />
+            <TargetKinds token={token} car={car} target={target} kinds={kinds} onKinds={onKinds} tyres={tyres} onTyres={onTyres} />
           ) : (
             <>
               <Typography variant="body2">{t('import.kinds.newCar')}</Typography>
@@ -81,6 +86,7 @@ export function KindsDisclosure({
                   />
                 ))}
               </Stack>
+              <NewCarTyres token={token} car={car} tyres={tyres} onTyres={onTyres} />
             </>
           ))}
       </Stack>
@@ -94,12 +100,16 @@ function TargetKinds({
   target,
   kinds,
   onKinds,
+  tyres,
+  onTyres,
 }: {
   token: string
   car: { id: string; name: string }
   target: { id: string; name: string }
   kinds: Kinds
   onKinds: (kinds: Kinds) => void
+  tyres: TyreChoice
+  onTyres: (tyres: TyreChoice) => void
 }) {
   const { t } = useTranslation()
   const heldBack = useHeldBack()
@@ -168,7 +178,87 @@ function TargetKinds({
           </Stack>
         )
       })}
+      <TyreRows car={car} review={review} tyres={tyres} onTyres={onTyres} />
     </>
+  )
+}
+
+/** A new car's tyres (#339): the same rows, every set new. */
+function NewCarTyres({ token, car, tyres, onTyres }: { token: string; car: { id: string; name: string }; tyres: TyreChoice; onTyres: (tyres: TyreChoice) => void }) {
+  const compared = useQuery(BackupImportReviewDocument, { variables: { token, cars: [{ carId: car.id, targetVehicleId: null }] }, fetchPolicy: 'network-only' })
+  if (compared.error) return <ErrorMessage error={compared.error} />
+  const review = compared.data?.backupImportReview[0]
+  if (!review) return <Loading />
+  return <TyreRows car={car} review={review} tyres={tyres} onTyres={onTyres} />
+}
+
+/**
+ * The tyres' rows (#339, the owner's choice: checkboxes): a box per set of the backup with its season and counts, a set here or one the
+ * car's history refuses shown but not choosable with why, and *Lines not tied to a set* last when the backup has any.
+ */
+function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; review: CarReview; tyres: TyreChoice; onTyres: (tyres: TyreChoice) => void }) {
+  const { t } = useTranslation()
+  const keyText = useKeyText()
+  const heading = useId()
+  const { sets, noSetLines, noSetExpenses } = review.tyres
+  if (sets.length === 0 && noSetLines === 0) return null
+  const why = (set: (typeof sets)[number]) =>
+    set.state === 'HERE'
+      ? t('import.tyres.here')
+      : set.state === 'REFUSED'
+        ? (keyText(set.refusalKey ?? '', (set.refusalArgs ?? {}) as Record<string, unknown>) ?? set.refusalKey ?? '')
+        : null
+  return (
+    <Stack component="section" aria-labelledby={heading} sx={{ gap: 0.5, alignItems: 'flex-start' }}>
+      <Typography id={heading} component="h3" variant="subtitle1">
+        {t('import.tyres.name')}
+      </Typography>
+      <Stack role="group" aria-label={t('import.tyres.setsLabel', { car: car.name })}>
+        {sets.map((set) => {
+          const reason = why(set)
+          return (
+            <Stack key={set.id}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    disabled={set.state !== 'NEW'}
+                    checked={set.state === 'NEW' && !tyres.except.includes(set.id)}
+                    onChange={(e) => onTyres({ ...tyres, except: e.target.checked ? tyres.except.filter((id) => id !== set.id) : [...tyres.except, set.id] })}
+                    slotProps={{ input: { 'aria-describedby': `${set.id}-counts${reason ? ` ${set.id}-why` : ''}` } }}
+                  />
+                }
+                label={set.name}
+              />
+              <Typography id={`${set.id}-counts`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+                {t('import.tyres.setCounts', { season: t(`tyres.seasons.${set.season}`), installations: set.installations, lines: set.lines, tyres: set.tyres })}
+              </Typography>
+              {reason && (
+                <Typography id={`${set.id}-why`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+                  {reason}
+                </Typography>
+              )}
+            </Stack>
+          )
+        })}
+        {noSetLines > 0 && (
+          <Stack>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={tyres.noSetLines}
+                  onChange={(e) => onTyres({ ...tyres, noSetLines: e.target.checked })}
+                  slotProps={{ input: { 'aria-describedby': 'no-set-counts' } }}
+                />
+              }
+              label={t('import.tyres.noSet')}
+            />
+            <Typography id="no-set-counts" variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+              {t('import.tyres.noSetCounts', { count: noSetLines, expenses: noSetExpenses })}
+            </Typography>
+          </Stack>
+        )}
+      </Stack>
+    </Stack>
   )
 }
 

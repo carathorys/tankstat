@@ -18,7 +18,15 @@ export interface KindChoice {
 }
 export type Kinds = Record<Kind, KindChoice>
 
+/** The tyres chosen of a car (#339): every new set but the unticked ones, and whether the lines of no set come. */
+export interface TyreChoice {
+  except: string[]
+  noSetLines: boolean
+}
+export const defaultTyres = (): TyreChoice => ({ except: [], noSetLines: true })
+
 export type CarReview = BackupImportReviewQuery['backupImportReview'][number]
+export type SetOffer = CarReview['tyres']['sets'][number]
 export type KindReview = CarReview['kinds'][number]
 
 const missing = (): KindChoice => ({ mode: 'ONLY_MISSING', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] })

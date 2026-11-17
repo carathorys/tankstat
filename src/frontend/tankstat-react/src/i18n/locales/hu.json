@@ -1493,7 +1493,9 @@
       "entry": {
         "refueling": "A(z) {{date}}-i tankolás",
         "expense": "{{title}} ({{date}})",
-        "recurring": "{{title}} (ismétlődő kiadás)"
+        "recurring": "{{title}} (ismétlődő kiadás)",
+        "tyreSet": "A(z) {{title}} gumiszett",
+        "tyreLines": "Szetthez nem kötött sorok"
       },
       "nothing": "Semmi nem lett importálva: az autóid változatlanok.",
       "failure": {
@@ -1636,6 +1638,30 @@
         "leftRefused": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került bele: a mentés egyik ismétlődő kiadását nem sikerült menteni.",
         "modesLabel": "Ismétlődő kiadások: {{car}}"
       }
+    },
+    "tyres": {
+      "name": "Gumik",
+      "setCounts": "{{season}} · {{installations}} időszak az autón · {{lines}} sor · {{tyres}} gumi",
+      "here": "Már megvan: marad, ahogy van.",
+      "noSet": "Szetthez nem kötött sorok",
+      "noSetCounts": "{{count}} sor a gumi naplóban, amely egyik szetthez sem tartozik · {{expenses}} kiadás",
+      "setsLabel": "A(z) {{car}} gumiszettjei",
+      "newSets_one": "{{count}} szett új: {{names}}, az autón töltött időszakaival, soraival és gumijaival, és a soraihoz tartozó {{expenses}} kiadással.",
+      "newSets_other": "{{count}} szett új: {{names}}, az autón töltött időszakaival, soraival és gumijaival, és a soraikhoz tartozó {{expenses}} kiadással.",
+      "hereSets_one": "{{count}} szett már megvan, és marad, ahogy van: {{names}}.",
+      "hereSets_other": "{{count}} szett már megvan, és marad, ahogy van: {{names}}.",
+      "refusedSet": "A(z) {{set}} nem importálható: {{reason}}",
+      "newCarSets_one": "{{count}} gumiszett jön az előzményeivel: {{names}}, és a soraihoz tartozó {{expenses}} kiadás.",
+      "newCarSets_other": "{{count}} gumiszett jön az előzményeivel: {{names}}, és a soraikhoz tartozó {{expenses}} kiadás.",
+      "noSetLines_one": "{{count}} szetthez nem kötött sor jön a gumi naplóból a hozzá tartozó {{expenses}} kiadással.",
+      "noSetLines_other": "{{count}} szetthez nem kötött sor jön a gumi naplóból a hozzájuk tartozó {{expenses}} kiadással.",
+      "reminders": "Az importált szettek cserefigyelmeztetése újraindul.",
+      "imported_one": "{{count}} szett importálva ({{names}}), {{lines}} sorral és {{tyres}} gumival.",
+      "imported_other": "{{count}} szett importálva ({{names}}), {{lines}} sorral és {{tyres}} gumival.",
+      "importedNoSet_one": "{{count}} szetthez nem kötött sor importálva a gumi naplóba.",
+      "importedNoSet_other": "{{count}} szetthez nem kötött sor importálva a gumi naplóba.",
+      "amountsHere_one": "Soraik közül {{count}} összege már szerepel a kiadásaid között: ott marad, a sor pedig nélküle jön.",
+      "amountsHere_other": "Soraik közül {{count}} összege már szerepel a kiadásaid között: ott maradnak, a sorok pedig nélkülük jönnek."
     }
   },
   "welcome": {

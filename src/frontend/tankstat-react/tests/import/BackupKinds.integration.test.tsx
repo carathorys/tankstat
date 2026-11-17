@@ -18,6 +18,9 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 afterAll(() => server.close())
+afterEach(() => {
+  TYRES = {}
+})
 
 type Mode = 'ONLY_MISSING' | 'DONT_IMPORT' | 'REPLACE_ALL' | 'CHOOSE'
 type Asked = { carId: string; targetVehicleId: string | null; refuelings?: { mode: Mode } | null; expenses?: { mode: Mode } | null; schedules?: { mode: Mode } | null; confirmedName?: string | null }
@@ -38,6 +41,12 @@ const AGAINST: Record<string, Record<string, Record<string, number>>> = {
     recurring: { backup: 0, targetLive: 1 },
   },
 }
+const NO_TYRES = { __typename: 'ImportTyreReviewInfo', sets: [], noSetLines: 0, noSetExpenses: 0, expenses: 0 }
+const offer = (id: string, name: string, state: string, over: Record<string, unknown> = {}) => ({
+  __typename: 'ImportSetOfferInfo', id, name, season: 'WINTER', state, installations: 3, lines: 6, tyres: 5, expenses: 3, refusalKey: null, refusalArgs: null, ...over,
+})
+/** The tyres each car's review answers with (#339); none unless a test sets them. */
+let TYRES: Record<string, unknown> = {}
 const review = (car: Asked) => {
   const modes = { refueling: car.refuelings?.mode, expense: car.expenses?.mode, recurring: car.schedules?.mode } as Record<string, Mode | undefined>
   const names = { c1: ['Octavia', 'My Octavia'], c2: ['Fabia', 'Old Golf'] } as Record<string, string[]>
@@ -45,6 +54,7 @@ const review = (car: Asked) => {
     __typename: 'ImportCarReviewInfo', carId: car.carId, name: names[car.carId][0], ownerName: 'Anna', ownedByMe: false, targetVehicleId: car.targetVehicleId, targetName: car.targetVehicleId ? names[car.carId][1] : null,
     newRefuelings: 0, newExpenses: 0, newSchedules: 0, existingRefuelings: 0, existingExpenses: 0, existingSchedules: 0, differing: 0, inTrash: 0,
     links: modes.expense !== 'DONT_IMPORT' && modes.recurring !== 'DONT_IMPORT', linksLost: modes.recurring === 'REPLACE_ALL' ? 2 : 0,
+    tyres: TYRES[car.carId] ?? NO_TYRES,
     kinds: ['refueling', 'expense', 'recurring'].map((kind) => kindOf(kind, { ...(car.targetVehicleId ? AGAINST[car.carId][kind] : {}), mode: modes[kind] ?? 'ONLY_MISSING', adds: 4, takes: 1 })),
   }
 }
@@ -67,7 +77,7 @@ const run = (state: string, over: Record<string, unknown> = {}) => ({
 })
 const reportCar = (over: Record<string, unknown> = {}) => ({
   __typename: 'ImportCarReportInfo', carId: 'c1', name: 'Octavia', vehicleId: 'v1', targetName: 'My Octavia', asNew: false, leftOut: false,
-  refuelings: 60, expenses: 2, schedules: 0, existing: 4, differing: 4, inTrash: 0, refusedMore: 0, refused: [], replacing: false, links: 1, kinds: [], ...over,
+  refuelings: 60, expenses: 2, schedules: 0, existing: 4, differing: 4, inTrash: 0, refusedMore: 0, refused: [], replacing: false, links: 1, kinds: [], tyres: null, ...over,
 })
 const kindReport = (kind: string, mode: Mode, imported: number, changed: number, deleted: number) => ({ __typename: 'ImportKindReportInfo', kind, mode, imported, changed, deleted })
 
@@ -187,7 +197,7 @@ it('a new car brings each kind whole or not at all, a box per kind with its coun
   const card = await screen.findByRole('region', { name: 'Octavia · a new car' })
   expect(within(card).getByText('No recurring expenses are imported.')).toBeInTheDocument()
   expect(within(card).getByText('Visits come without their link: expenses and recurring expenses are not both imported.')).toBeInTheDocument()
-  expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: null, schedules: { mode: 'DONT_IMPORT' } }])
+  expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: null, schedules: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true } }])
 })
 
 it('the dialog picks entry by entry: tick and untick all, show more, keep mine or take the backup\'s for one or for all; Done says it on the kind', async () => {
@@ -231,7 +241,7 @@ it('the dialog picks entry by entry: tick and untick all, show more, keep mine o
   expect(await car.findByText("2 of 55 new are added; 2 of 3 that differ take the backup's values.")).toBeInTheDocument()
   // The picks travel as a default and its exceptions.
   await ui.click(screen.getByRole('button', { name: 'Next' }))
-  await waitFor(() => expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: 'v1', refuelings: { mode: 'CHOOSE', addNew: false, newExceptions: ['n1', 'n55'], takeBackups: true, differExceptions: ['d2'] } }]))
+  await waitFor(() => expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: 'v1', refuelings: { mode: 'CHOOSE', addNew: false, newExceptions: ['n1', 'n55'], takeBackups: true, differExceptions: ['d2'] }, tyres: { except: [], noSetLines: true } }]))
 })
 
 it('the review says what each kind\'s choice does; a car with a Replace all is all or nothing and asks for its name, one car after the other', async () => {
@@ -278,8 +288,8 @@ it('the review says what each kind\'s choice does; a car with a Replace all is a
 
   await waitFor(() => expect(calls.starts).toHaveLength(1))
   expect(calls.starts[0].cars).toEqual([
-    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', refuelings: { mode: 'REPLACE_ALL' }, expenses: { mode: 'CHOOSE', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] }, schedules: { mode: 'REPLACE_ALL' }, confirmedName: '  my octavia ' },
-    { carId: 'c2', targetVehicleId: 'v2', policy: 'IMPORT_THE_REST', refuelings: { mode: 'DONT_IMPORT' } },
+    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', refuelings: { mode: 'REPLACE_ALL' }, expenses: { mode: 'CHOOSE', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] }, schedules: { mode: 'REPLACE_ALL' }, confirmedName: '  my octavia ', tyres: { except: [], noSetLines: true } },
+    { carId: 'c2', targetVehicleId: 'v2', policy: 'IMPORT_THE_REST', refuelings: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true } },
   ])
 })
 
@@ -341,5 +351,78 @@ it('the report says per kind what was replaced, imported and changed, and a car 
   const held = within(screen.getByRole('region', { name: 'Golf' }))
   expect(held.getByRole('heading', { name: 'My Golf · left as it was' })).toBeInTheDocument()
   expect(held.getByText('Nothing of My Golf was deleted or imported: since the review, one of its expenses got a photo or a tyre log line, which the backup could not bring back.')).toBeInTheDocument()
+  await check(view.container)
+})
+
+it('the tyres come set by set: a new set ticked, one here or refused shown with why, the lines of no set last; the review and the report say it', async () => {
+  TYRES = {
+    c1: {
+      __typename: 'ImportTyreReviewInfo', noSetLines: 2, noSetExpenses: 1, expenses: 4,
+      sets: [
+        offer('s1', 'Nokian WR', 'NEW'),
+        offer('s2', 'Michelin Primacy', 'HERE', { season: 'SUMMER' }),
+        offer('s3', 'Hankook', 'REFUSED', { refusalKey: 'tyres.twoSetsAtOnce', refusalArgs: { set: 'Old', from: '2024-11-01', until: null } }),
+      ],
+    },
+  }
+  const { calls, view, ui } = await cars()
+  const car = await open(ui, 'Octavia')
+
+  const rows = within(await car.findByRole('group', { name: 'Tyre sets of Octavia' }))
+  const nokian = rows.getByRole('checkbox', { name: 'Nokian WR' })
+  expect(nokian).toBeChecked()
+  expect(nokian).toHaveAccessibleDescription('Winter · 3 times on the car · 6 lines · 5 single tyres')
+  const here = rows.getByRole('checkbox', { name: 'Michelin Primacy' })
+  expect(here).toBeDisabled()
+  expect(here).toHaveAccessibleDescription(/Already here: it stays as it is\.$/)
+  expect(rows.getByRole('checkbox', { name: 'Hankook' })).toBeDisabled()
+  expect(rows.getByRole('checkbox', { name: 'Hankook' })).toHaveAccessibleDescription(/Old is on the car then, from .*2024/)
+  const noSet = rows.getByRole('checkbox', { name: 'Lines not tied to a set' })
+  expect(noSet).toHaveAccessibleDescription('2 lines of the tyre log that belong to no set · 1 expenses')
+  await check(view.container)
+
+  await ui.click(noSet)
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  const card = within(await screen.findByRole('region', { name: 'Octavia · added to your car My Octavia' }))
+  expect(card.getByText('1 set is new: Nokian WR, with its times on the car, lines and single tyres, and the 4 expenses its lines hold.')).toBeInTheDocument()
+  expect(card.getByText('1 set is already here and stays as it is: Michelin Primacy.')).toBeInTheDocument()
+  expect(card.getByText(/^Hankook cannot come: Old is on the car then, from .*2024/)).toBeInTheDocument()
+  expect(card.queryByText(/lines of the tyre log that belong to no set/)).not.toBeInTheDocument() // unticked
+  expect(card.getByText('The swap reminders of imported sets start afresh.')).toBeInTheDocument()
+  expect(calls.reviews.at(-1)?.[0]).toMatchObject({ tyres: { except: [], noSetLines: false } })
+
+  // Unticking the new set: it goes into the choice's exceptions.
+  await ui.click(screen.getByRole('button', { name: 'Back' }))
+  const again = within(await screen.findByRole('region', { name: 'Octavia' }))
+  await ui.click(again.getByRole('button', { name: 'Choose what to import' })) // still ticked, closed again
+  await ui.click(within(await again.findByRole('group', { name: 'Tyre sets of Octavia' })).getByRole('checkbox', { name: 'Nokian WR' }))
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  await waitFor(() => expect(calls.reviews.at(-1)?.[0]).toMatchObject({ tyres: { except: ['s1'] } }))
+})
+
+it('a new car names its sets coming with their history, and the report says what came and what amounts were there already', async () => {
+  TYRES = { c1: { __typename: 'ImportTyreReviewInfo', noSetLines: 0, noSetExpenses: 0, expenses: 2, sets: [offer('s1', 'Nokian WR', 'NEW'), offer('s2', 'Michelin', 'NEW', { season: 'SUMMER' })] } }
+  const { ui } = await cars()
+  const car = await screen.findByRole('region', { name: 'Octavia' })
+  await ui.click(within(car).getByRole('checkbox', { name: 'Octavia' }))
+  await ui.click(within(car).getByRole('checkbox', { name: 'As a new car' }))
+  await ui.click(within(car).getByRole('button', { name: 'Choose what to import' }))
+  expect(await within(car).findByRole('checkbox', { name: 'Michelin' })).toBeChecked()
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  expect(await screen.findByText('2 tyre sets come with their history: Nokian WR and Michelin, and the 2 expenses their lines hold.')).toBeInTheDocument()
+})
+
+it('the report says the tyres imported, the lines of no set, the amounts already among the expenses, and a set that could not come', async () => {
+  const report = [
+    reportCar({ tyres: { __typename: 'ImportTyreReportInfo', sets: ['Nokian WR', 'Michelin'], lines: 9, tyres: 5, noSetLines: 2, expenses: 4, amountsHere: 3 },
+      refused: [{ __typename: 'ImportRefusedEntryInfo', kind: 'tyreSet', date: null, title: 'Hankook', key: 'tyres.twoSetsAtOnce', args: { set: 'Old', from: '2024-11-01' } }] }),
+  ]
+  const { view } = await cars(run('DONE', { report }))
+
+  const done = within(await screen.findByRole('region', { name: 'Octavia' }))
+  expect(done.getByText('Imported 2 tyre sets (Nokian WR, Michelin) with 9 lines and 5 single tyres.')).toBeInTheDocument()
+  expect(done.getByText('Imported 2 lines of the tyre log that belong to no set.')).toBeInTheDocument()
+  expect(done.getByText('3 amounts of their lines are already among your expenses: they stay there, and the lines come without them.')).toBeInTheDocument()
+  expect(done.getByText(/^The tyre set Hankook: Old is on the car then, from .*2024/)).toBeInTheDocument()
   await check(view.container)
 })

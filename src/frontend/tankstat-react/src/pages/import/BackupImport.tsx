@@ -29,10 +29,11 @@ import {
 } from '../../gql/generated.ts'
 import { useKeyText } from '../../i18n/errors.ts'
 import { useFormat } from '../../i18n/format.ts'
+import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage, SuccessMessage } from '../../messages.tsx'
 import { BackupFileStep } from './BackupFileStep.tsx'
 import { KindsDisclosure, ReplaceConfirmations, type Replacement } from './BackupKinds.tsx'
-import { defaultKinds, kindsInput, nothingChosen, replaces, useKindLine, type CarReview, type Kind, type Kinds } from './backupKinds.ts'
+import { defaultKinds, defaultTyres, kindsInput, nothingChosen, replaces, useKindLine, type CarReview, type Kind, type Kinds, type TyreChoice } from './backupKinds.ts'
 
 export type BackupStep = 'file' | 'cars' | 'review' | 'done'
 
@@ -50,6 +51,8 @@ interface Choice {
   policy: RefusedEntryPolicy
   /** What comes of each kind (#338); only the missing unless the person chose otherwise. */
   kinds: Kinds
+  /** Its tyres (#339): every new set unless unticked, and the lines of no set. */
+  tyres: TyreChoice
 }
 
 const active = (run: ImportRunFieldsFragment | undefined) => run?.state === 'WAITING' || run?.state === 'RUNNING'
@@ -141,7 +144,7 @@ function useUnits() {
 const toInput = (choices: Record<string, Choice>, names: Record<string, string> = {}) =>
   Object.entries(choices)
     .filter(([, c]) => c.picked)
-    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), confirmedName: names[carId] }))
+    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: { except: c.tyres.except, noSetLines: c.tyres.noSetLines }, confirmedName: names[carId] }))
 
 // ---- 2. the cars ---------------------------------------------------------------------------------------------
 
@@ -170,7 +173,7 @@ function CarsStep({
 
   // A car the person has not touched yet: not picked; once picked, the app's match if it has one, else a new car.
   const choiceOf = (offer: Offer): Choice =>
-    choices[offer.car.id] ?? { picked: false, asNew: offer.suggestedTargetId == null, target: offer.suggestedTargetId ?? null, policy: 'IMPORT_THE_REST', kinds: defaultKinds() }
+    choices[offer.car.id] ?? { picked: false, asNew: offer.suggestedTargetId == null, target: offer.suggestedTargetId ?? null, policy: 'IMPORT_THE_REST', kinds: defaultKinds(), tyres: defaultTyres() }
   const set = (offer: Offer, change: Partial<Choice>) => onChoices({ ...choices, [offer.car.id]: { ...choiceOf(offer), ...change } })
   const picked = data.cars.filter((o) => choiceOf(o).picked)
   const problemOf = (offer: Offer): string | null => {
@@ -211,7 +214,7 @@ function CarsStep({
           showUnits={!usual || usual.distanceUnit !== offer.car.distanceUnit || usual.volumeUnit !== offer.car.volumeUnit}
           token={token}
           // What is chosen per kind is about one target: another target, or a new car, starts from only the missing again.
-          onChange={(change) => set(offer, 'asNew' in change || 'target' in change ? { ...change, kinds: defaultKinds() } : change)}
+          onChange={(change) => set(offer, 'asNew' in change || 'target' in change ? { ...change, kinds: defaultKinds(), tyres: defaultTyres() } : change)}
         />
       ))}
       {picked.length === 0 && (
@@ -303,7 +306,7 @@ function CarCard({
                   </RadioGroup>
                 </>
               ))}
-            {comparable && <KindsDisclosure token={token} car={car} target={target} kinds={choice.kinds} onKinds={(kinds) => onChange({ kinds })} />}
+            {comparable && <KindsDisclosure token={token} car={car} target={target} kinds={choice.kinds} onKinds={(kinds) => onChange({ kinds })} tyres={choice.tyres} onTyres={(tyres) => onChange({ tyres })} />}
             {problem && (
               <Typography id={note} variant="body2" role="status" sx={{ color: 'error.main' }}>
                 {problem}
@@ -374,7 +377,7 @@ function ReviewStep({
   return (
     <Stack sx={{ gap: 2, alignItems: 'stretch' }}>
       {review.data.backupImportReview.map((car) => (
-        <ReviewCard key={car.carId} car={car} kinds={choices[car.carId]?.kinds ?? defaultKinds()} policy={choices[car.carId]?.policy ?? 'IMPORT_THE_REST'} onPolicy={(policy) => onChoices({ ...choices, [car.carId]: { ...choices[car.carId], policy } })} />
+        <ReviewCard key={car.carId} car={car} kinds={choices[car.carId]?.kinds ?? defaultKinds()} tyres={choices[car.carId]?.tyres ?? defaultTyres()} policy={choices[car.carId]?.policy ?? 'IMPORT_THE_REST'} onPolicy={(policy) => onChoices({ ...choices, [car.carId]: { ...choices[car.carId], policy } })} />
       ))}
       <Typography variant="body2">{t('import.plan.yours')}</Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -407,8 +410,9 @@ function ReviewStep({
   )
 }
 
-function ReviewCard({ car, kinds, policy, onPolicy }: { car: CarReview; kinds: Kinds; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
+function ReviewCard({ car, kinds, tyres, policy, onPolicy }: { car: CarReview; kinds: Kinds; tyres: TyreChoice; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
   const { t } = useTranslation()
+  const tyreLines = useTyreReviewLines()
   const line = useKindLine()
   const heading = useId()
   const existing = car.existingRefuelings + car.existingExpenses + car.existingSchedules
@@ -469,6 +473,11 @@ function ReviewCard({ car, kinds, policy, onPolicy }: { car: CarReview; kinds: K
           <Typography component="li" variant="body2">
             {car.links ? t('import.kinds.links') : t('import.kinds.noLinks')}
           </Typography>
+          {tyreLines(car, tyres).map((line) => (
+            <Typography key={line} component="li" variant="body2">
+              {line}
+            </Typography>
+          ))}
           {car.targetName && (
             <Typography component="li" variant="body2">
               {t('import.plan.pastFigures', { target: car.targetName })}
@@ -494,6 +503,29 @@ function ReviewCard({ car, kinds, policy, onPolicy }: { car: CarReview; kinds: K
       </Stack>
     </Card>
   )
+}
+
+/** The review's lines about a car's tyres (#339): the new sets that come, those here that stay, those that cannot come and why. */
+function useTyreReviewLines() {
+  const { t, i18n } = useTranslation()
+  const keyText = useKeyText()
+  return (car: CarReview, tyres: TyreChoice): string[] => {
+    const list = (names: string[]) => new Intl.ListFormat(validLocale(i18n.language, i18n.resolvedLanguage), { type: 'conjunction' }).format(names)
+    const sets = car.tyres.sets
+    const coming = sets.filter((s) => s.state === 'NEW' && !tyres.except.includes(s.id))
+    const lines: string[] = []
+    if (coming.length > 0)
+      lines.push(
+        t(car.targetName ? 'import.tyres.newSets' : 'import.tyres.newCarSets', { count: coming.length, names: list(coming.map((s) => s.name)), expenses: car.tyres.expenses }),
+      )
+    const here = sets.filter((s) => s.state === 'HERE')
+    if (here.length > 0) lines.push(t('import.tyres.hereSets', { count: here.length, names: list(here.map((s) => s.name)) }))
+    for (const set of sets.filter((s) => s.state === 'REFUSED'))
+      lines.push(t('import.tyres.refusedSet', { set: set.name, reason: keyText(set.refusalKey ?? '', (set.refusalArgs ?? {}) as Record<string, unknown>) ?? set.refusalKey }))
+    if (tyres.noSetLines && car.tyres.noSetLines > 0) lines.push(t('import.tyres.noSetLines', { count: car.tyres.noSetLines, expenses: car.tyres.noSetExpenses }))
+    if (coming.length > 0) lines.push(t('import.tyres.reminders'))
+    return lines
+  }
 }
 
 // ---- the run: waiting, running, done, or nothing imported -------------------------------------------------------
@@ -659,13 +691,28 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
                 <Stack component="ul" sx={{ gap: 0.5, m: 0, pl: 2.5 }}>
                   {refused.map((entry, i) => (
                     <Typography key={i} component="li" variant="body2">
-                      {t(`import.run.entry.${entry.kind === 'expense' || entry.kind === 'recurring' ? entry.kind : 'refueling'}`, { date: entry.date ? date(entry.date) : '', title: entry.title ?? '' })}
+                      {t(`import.run.entry.${(['expense', 'recurring', 'tyreSet', 'tyreLines'] as const).find((k) => k === entry.kind) ?? 'refueling'}`, { date: entry.date ? date(entry.date) : '', title: entry.title ?? '' })}
                       {': '}
                       {keyText(entry.key, (entry.args ?? {}) as Record<string, unknown>) ?? entry.key}
                     </Typography>
                   ))}
                 </Stack>
                 {car.refusedMore > 0 && <Typography variant="body2">{t('import.run.refusedMore', { count: car.refusedMore })}</Typography>}
+              </>
+            )}
+            {!car.leftOut && car.tyres && (
+              <>
+                {car.tyres.sets.length > 0 && (
+                  <Typography variant="body2">
+                    {t('import.tyres.imported', { count: car.tyres.sets.length, names: car.tyres.sets.join(', '), lines: car.tyres.lines, tyres: car.tyres.tyres })}
+                  </Typography>
+                )}
+                {car.tyres.noSetLines > 0 && <Typography variant="body2">{t('import.tyres.importedNoSet', { count: car.tyres.noSetLines })}</Typography>}
+                {car.tyres.amountsHere > 0 && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {t('import.tyres.amountsHere', { count: car.tyres.amountsHere })}
+                  </Typography>
+                )}
               </>
             )}
             {car.vehicleId && !car.leftOut && (

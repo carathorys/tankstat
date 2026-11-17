@@ -39,7 +39,7 @@ const kindOf = (kind: string, over: Record<string, unknown> = {}) => ({
 const reviewOf = (carId: string, name: string, over: Record<string, unknown> = {}) => ({
   __typename: 'ImportCarReviewInfo', carId, name, ownerName: 'Anna', ownedByMe: false, targetVehicleId: null, targetName: null,
   newRefuelings: 10, newExpenses: 2, newSchedules: 0, existingRefuelings: 0, existingExpenses: 0, existingSchedules: 0, differing: 0, inTrash: 0,
-  links: true, linksLost: 0, kinds: [kindOf('refueling'), kindOf('expense'), kindOf('recurring')], ...over,
+  links: true, linksLost: 0, kinds: [kindOf('refueling'), kindOf('expense'), kindOf('recurring')], tyres: { __typename: 'ImportTyreReviewInfo', sets: [], noSetLines: 0, noSetExpenses: 0, expenses: 0 }, ...over,
 })
 const run = (state: string, over: Record<string, unknown> = {}) => ({
   __typename: 'ImportRunInfo', id: 'run1', kind: 'IMPORT', startedByName: 'Me', mine: true, state, failure: null, queuedAt: '2026-11-16T10:00:00Z', startedAt: null, ahead: 0,
@@ -48,7 +48,7 @@ const run = (state: string, over: Record<string, unknown> = {}) => ({
 })
 const reportCar = (over: Record<string, unknown> = {}) => ({
   __typename: 'ImportCarReportInfo', carId: 'c1', name: 'Octavia', vehicleId: 'v1', targetName: 'My Octavia', asNew: false, leftOut: false,
-  refuelings: 300, expenses: 50, schedules: 2, existing: 112, differing: 4, inTrash: 1, refusedMore: 0, refused: [], replacing: false, links: 0, kinds: [], ...over,
+  refuelings: 300, expenses: 50, schedules: 2, existing: 112, differing: 4, inTrash: 1, refusedMore: 0, refused: [], replacing: false, links: 0, kinds: [], tyres: null, ...over,
 })
 
 /** The flow from the Cars step on (the file is #336's step, tested there), with the server's answers; what was asked is kept. */
@@ -191,8 +191,8 @@ it('the review says per car what is new, exists, differs and is in the trash; th
 
   expect(await screen.findByRole('status')).toHaveTextContent('Importing… car 1 of 2 · 310 of 470 entries')
   expect(calls.starts).toEqual([{ token: 't1', cars: [
-    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST' },
-    { carId: 'c2', targetVehicleId: null, policy: 'LEAVE_CAR_OUT' },
+    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', tyres: { except: [], noSetLines: true } },
+    { carId: 'c2', targetVehicleId: null, policy: 'LEAVE_CAR_OUT', tyres: { except: [], noSetLines: true } },
   ] }])
   expect(await screen.findByText('Import finished: 1 car.')).toBeInTheDocument()
   expect(screen.getByTestId('step')).toHaveTextContent('done')

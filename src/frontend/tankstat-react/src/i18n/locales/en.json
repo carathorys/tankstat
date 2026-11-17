@@ -1493,7 +1493,9 @@
       "entry": {
         "refueling": "The refuelling of {{date}}",
         "expense": "{{title}} ({{date}})",
-        "recurring": "{{title}} (recurring expense)"
+        "recurring": "{{title}} (recurring expense)",
+        "tyreSet": "The tyre set {{title}}",
+        "tyreLines": "Lines not tied to a set"
       },
       "nothing": "Nothing was imported: your cars are as they were.",
       "failure": {
@@ -1636,6 +1638,30 @@
         "leftRefused": "Nothing of {{car}} was deleted or imported: one of the backup's recurring expenses could not be saved.",
         "modesLabel": "Recurring expenses of {{car}}"
       }
+    },
+    "tyres": {
+      "name": "Tyres",
+      "setCounts": "{{season}} · {{installations}} times on the car · {{lines}} lines · {{tyres}} single tyres",
+      "here": "Already here: it stays as it is.",
+      "noSet": "Lines not tied to a set",
+      "noSetCounts": "{{count}} lines of the tyre log that belong to no set · {{expenses}} expenses",
+      "setsLabel": "Tyre sets of {{car}}",
+      "newSets_one": "{{count}} set is new: {{names}}, with its times on the car, lines and single tyres, and the {{expenses}} expenses its lines hold.",
+      "newSets_other": "{{count}} sets are new: {{names}}, with their times on the car, lines and single tyres, and the {{expenses}} expenses their lines hold.",
+      "hereSets_one": "{{count}} set is already here and stays as it is: {{names}}.",
+      "hereSets_other": "{{count}} sets are already here and stay as they are: {{names}}.",
+      "refusedSet": "{{set}} cannot come: {{reason}}",
+      "newCarSets_one": "{{count}} tyre set comes with its history: {{names}}, and the {{expenses}} expenses its lines hold.",
+      "newCarSets_other": "{{count}} tyre sets come with their history: {{names}}, and the {{expenses}} expenses their lines hold.",
+      "noSetLines_one": "{{count}} line of the tyre log that belongs to no set comes with its {{expenses}} expenses.",
+      "noSetLines_other": "{{count}} lines of the tyre log that belong to no set come with their {{expenses}} expenses.",
+      "reminders": "The swap reminders of imported sets start afresh.",
+      "imported_one": "Imported {{count}} tyre set ({{names}}) with {{lines}} lines and {{tyres}} single tyres.",
+      "imported_other": "Imported {{count}} tyre sets ({{names}}) with {{lines}} lines and {{tyres}} single tyres.",
+      "importedNoSet_one": "Imported {{count}} line of the tyre log that belongs to no set.",
+      "importedNoSet_other": "Imported {{count}} lines of the tyre log that belong to no set.",
+      "amountsHere_one": "{{count}} amount of their lines is already among your expenses: it stays there, and the line comes without it.",
+      "amountsHere_other": "{{count}} amounts of their lines are already among your expenses: they stay there, and the lines come without them."
     }
   },
   "welcome": {

@@ -179,6 +179,23 @@ query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
     inTrash
     links
     linksLost
+    tyres {
+      expenses
+      noSetLines
+      noSetExpenses
+      sets {
+        id
+        name
+        season
+        state
+        installations
+        lines
+        tyres
+        expenses
+        refusalKey
+        refusalArgs
+      }
+    }
     kinds {
       kind
       mode
@@ -235,6 +252,14 @@ fragment ImportRunFields on ImportRunInfo {
     inTrash
     replacing
     links
+    tyres {
+      sets
+      lines
+      tyres
+      noSetLines
+      expenses
+      amountsHere
+    }
     kinds {
       kind
       mode
