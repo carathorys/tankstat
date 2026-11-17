@@ -158,7 +158,7 @@ public class ContractTests
     [InlineData("RestoreOwnerInfo", "id", "name")]
     [InlineData("RestorePersonInfo", "id", "name", "email")]
     [InlineData("RestoreCarReviewInfo", "state", "ownerId", "ownerName", "access", "goneAccess")]
-    [InlineData("ImportRestoreReportInfo", "ownerId", "cameBack", "grants", "goneGrantees", "peopleLeftOut")]
+    [InlineData("ImportRestoreReportInfo", "ownerId", "cameBack", "grants", "goneGrantees", "peopleLeftOut", "ownerName")]
     [InlineData("ImportCarOffersInfo", "file", "cars", "targets")]
     [InlineData("ImportCarOfferInfo", "car", "ownedByMe", "suggestedTargetId")]
     [InlineData("ImportOwnCarInfo", "id", "name", "licensePlate", "distanceUnit", "volumeUnit")]

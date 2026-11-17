@@ -427,7 +427,7 @@ public sealed class BackupImportWork(
                     vehicle = here;
                     compared = await rules.CompareAsync(car, vehicle, ct, byId: true);
                     if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, vehicle, ct, byId: true);
-                    restoreReport = new ImportRestoreReport(vehicle.OwnerId, CameBack: false, 0, [], 0);
+                    restoreReport = new ImportRestoreReport(vehicle.OwnerId, CameBack: false, 0, [], 0, (await users.FindByIdAsync(vehicle.OwnerId, ct))?.DisplayName);
                 }
                 else
                 {
@@ -442,7 +442,7 @@ public sealed class BackupImportWork(
                         else if (await users.FindByIdAsync(grant.GranteeId, ct) is not null) granted.Add((grant.GranteeId, grant.Level));
                         else gone.Add(grant.Name ?? "");
                     var written = await sharing.RestoreLogAccessAsync(vehicle.Id, granted, ct);
-                    restoreReport = new ImportRestoreReport(owner, CameBack: true, written, gone, 0);
+                    restoreReport = new ImportRestoreReport(owner, CameBack: true, written, gone, 0, (await users.FindByIdAsync(owner, ct))?.DisplayName);
                 }
             }
             else if (chosen.TargetVehicleId is { } targetId)

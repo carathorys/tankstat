@@ -254,7 +254,7 @@ public sealed record ImportKindReportInfo(string Kind, ImportKindMode Mode, int 
 /// access but have no account (their names in the backup), and the private widgets and own dashboards left out for people without an account
 /// or the sight of the car.
 /// </summary>
-public sealed record ImportRestoreReportInfo(Guid OwnerId, bool CameBack, int Grants, IReadOnlyList<string> GoneGrantees, int PeopleLeftOut);
+public sealed record ImportRestoreReportInfo(Guid OwnerId, bool CameBack, int Grants, IReadOnlyList<string> GoneGrantees, int PeopleLeftOut, string? OwnerName);
 
 /// <param name="Replacing">The car had a Replace all: with <c>leftOut</c> it was left exactly as it was.</param>
 /// <param name="Links">The visits' links that were added.</param>
@@ -281,7 +281,7 @@ public sealed record ImportRunInfo(
             [.. (c.Kinds ?? []).Select(k => new ImportKindReportInfo(k.Kind, k.Mode, k.Imported, k.Changed, k.Deleted))], c.Replacing, c.Links,
             c.Tyres is { } t ? new ImportTyreReportInfo(t.Sets, t.Lines, t.Tyres, t.NoSetLines, t.Expenses, t.AmountsHere) : null,
             c.Media is { } m ? new ImportMediaReportInfo(m.Photos, m.PhotosHere, m.Picture, m.Charts, m.ChartsHere, m.Dashboard, m.OwnDashboard, m.TilesLeftOut) : null,
-            c.Restore is { } r ? new ImportRestoreReportInfo(r.OwnerId, r.CameBack, r.Grants, r.GoneGrantees, r.PeopleLeftOut) : null)).ToList(),
+            c.Restore is { } r ? new ImportRestoreReportInfo(r.OwnerId, r.CameBack, r.Grants, r.GoneGrantees, r.PeopleLeftOut, r.OwnerName) : null)).ToList(),
         fileToken, limitMinutes, v.Plan.BackupOf);
 }
 

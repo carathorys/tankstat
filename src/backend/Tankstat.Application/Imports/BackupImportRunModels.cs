@@ -102,7 +102,7 @@ public sealed record ImportCarReport(
 /// What a partial restore did besides the entries (#340): whose the car is, whether it came back whole (it was gone), the grants written,
 /// the people who had access but have no account (by their name in the backup), and the private widgets and own dashboards left out.
 /// </summary>
-public sealed record ImportRestoreReport(Guid OwnerId, bool CameBack, int Grants, IReadOnlyList<string> GoneGrantees, int PeopleLeftOut);
+public sealed record ImportRestoreReport(Guid OwnerId, bool CameBack, int Grants, IReadOnlyList<string> GoneGrantees, int PeopleLeftOut, string? OwnerName = null);
 
 /// <summary>
 /// What came of a car's tyres (#339): the sets imported by name, their lines and single tyres, the lines of no set, the expenses their

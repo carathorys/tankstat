@@ -299,6 +299,7 @@ fragment ImportRunFields on ImportRunInfo {
       grants
       goneGrantees
       peopleLeftOut
+      ownerName
     }
     tyres {
       sets

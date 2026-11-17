@@ -19,6 +19,7 @@ public sealed class BackupImportRunService(
     ILogger<BackupImportRunService> logger)
 {
     public const string AlreadyRunningKey = "import.alreadyRunning";
+    public const string RestoreAlreadyRunningKey = "restore.alreadyRunning";
 
     /// <summary>One start at a time per person in this process: the look for a run of theirs and the new run's row are one step (a second tab, a double press).</summary>
     private static readonly StripedLocks Starting = new();
@@ -209,7 +210,9 @@ public sealed class BackupImportRunService(
         await gate.WaitAsync(ct);
         try
         {
-            if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
+            if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true })
+                throw restore ? new DomainException(RestoreAlreadyRunningKey, "A restore of yours is running or waiting already.")
+                    : new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
             var reviews = await ReviewAsync(token, choices, starting: true, ct, restore); // every refusal that can be foreseen, before anything is queued
             var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
                 choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes) + review.TyreSteps + review.MediaSteps,

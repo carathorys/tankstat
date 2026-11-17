@@ -785,6 +785,7 @@ type ImportRestoreReportInfo {
   grants: Int!
   goneGrantees: [String!]!
   peopleLeftOut: Int!
+  ownerName: String
 }
 
 type ImportResultInfo {
