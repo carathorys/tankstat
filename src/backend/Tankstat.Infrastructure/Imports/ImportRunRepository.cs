@@ -135,4 +135,10 @@ internal sealed class ImportTargetReader(IDbContextFactory<AppDbContext> dbFacto
             await db.CountLogsWithPhotosAsync(Tankstat.Domain.Photos.LogType.Expense, vehicle.Id, ct),
             await db.CountExpensesOnTyreLinesAsync(vehicle.Id, ct));
     }
+
+    public async Task<IReadOnlyList<Guid>> PhotosAsync(Tankstat.Domain.Vehicles.Vehicle vehicle, Tankstat.Domain.Photos.LogType type, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.LogPhotos.AsNoTracking().Where(p => p.VehicleId == vehicle.Id && p.LogType == type).Select(p => p.ImageId).ToListAsync(ct);
+    }
 }

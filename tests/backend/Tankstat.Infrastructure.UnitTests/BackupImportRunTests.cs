@@ -325,6 +325,8 @@ public sealed partial class BackupImportRunTests(ITestOutputHelper output) : IAs
         public Task<BackupCar?> ReadCarAsync(Guid carId, CancellationToken ct) =>
             ++_read > 1 ? throw new InvalidOperationException("Zzcanary: the disk went away") : inner.ReadCarAsync(carId, ct);
         public Task<Tankstat.Application.Tyres.TyreBook?> ReadTyresAsync(Guid carId, CancellationToken ct) => inner.ReadTyresAsync(carId, ct);
+        public Task<BackupMedia?> ReadMediaAsync(Guid carId, CancellationToken ct) => inner.ReadMediaAsync(carId, ct);
+        public Task<byte[]?> ReadImageAsync(Guid carId, BackupPhoto? photo, Guid imageId, int maxBytes, CancellationToken ct) => inner.ReadImageAsync(carId, photo, imageId, maxBytes, ct);
     }
 
     [Theory, MemberData(nameof(Providers))]

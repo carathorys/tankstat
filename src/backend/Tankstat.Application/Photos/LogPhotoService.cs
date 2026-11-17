@@ -216,6 +216,9 @@ public sealed class LogPhotoService(
     }
 
     /// <summary>Removes the files of the photos of logs that were deleted for good (their rows went with the logs).</summary>
+    /// <summary>Deletes photos' images, rows and files, by image id (#339: a car's logs of one kind deleted for good); inside a run the files go after the commit.</summary>
+    public Task DeleteImagesAsync(IEnumerable<Guid> imageIds, CancellationToken ct) => images.DeleteAsync(imageIds, ct);
+
     public Task DeleteFilesAsync(LogType logType, PurgedLogs purged, CancellationToken ct) =>
         images.DeleteFoldersAsync(purged.WithPhotos.Select(l => ImageFolders.LogPhotos(l.VehicleId, logType, l.LogId)), ct);
 }

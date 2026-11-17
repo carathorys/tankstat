@@ -13,6 +13,7 @@ using Tankstat.Domain.Imports;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Photos;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Infrastructure.Persistence;
 
@@ -177,15 +178,15 @@ public sealed partial class BackupImportRunTests
         if (Instance(provider, "here") is not { } here) return;
         var source = await SourceAsync();
         var bob = await PersonAsync(here, "Bob");
-        var (own, first) = await AsAsync(here, bob, async sp =>
+        var (own, tow) = await AsAsync(here, bob, async sp =>
         {
             var own = (await sp.GetRequiredService<VehicleService>().AddAsync("My Octavia", null, FuelType.Diesel, MeasurementUnits.Metric, default)).Id;
             var fills = sp.GetRequiredService<RefuelingService>();
-            var first = (await fills.LogAsync(own, new(Day.AddDays(1), 30, 45, "EUR", 19_000, true, "mine"), default)).Id;
+            await fills.LogAsync(own, new(Day.AddDays(1), 30, 45, "EUR", 19_000, true, "mine"), default);
             // A reading of a kind that is kept: the backup's second fill-up (10,650 on the 11th) cannot come after it.
-            await sp.GetRequiredService<ExpenseService>().AddAsync(own, new(Day.AddDays(5), "Tow", null, 30, "EUR", 20_000, null), default);
+            var tow = (await sp.GetRequiredService<ExpenseService>().AddAsync(own, new(Day.AddDays(5), "Tow", null, 30, "EUR", 20_000, null), default)).Id;
             await fills.LogAsync(own, new(Day.AddDays(20), 30, 45, "EUR", 21_000, true, "mine too"), default);
-            return (own, first);
+            return (own, tow);
         });
         var octavia = new ImportCarChoice(source.Octavia, own, Kinds: new ImportCarKinds(Refuelings: new(ImportKindMode.ReplaceAll)), ConfirmedName: "My Octavia");
         async Task<List<string?>> NotesAsync()
@@ -204,20 +205,24 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(["mine", "mine too"], await NotesAsync());
         Assert.False(report.Cars[1].LeftOut);
 
-        // A photo on one of its refuellings since the review (decision 11): nothing is deleted, and the reason names the kind.
-        var queued = await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), octavia);
+        // A tyre log line on one of its expenses since the review (decision 11; a photo no longer holds it back, #339): nothing is
+        // deleted, the refuellings purged before it included, and the reason names the kind.
+        var both = octavia with { Kinds = new ImportCarKinds(Refuelings: new(ImportKindMode.ReplaceAll), Expenses: new(ImportKindMode.ReplaceAll)) };
+        var queued = await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), both);
         await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
         {
-            db.LogPhotos.Add(LogPhoto.Create(bob.Id, own, LogType.Refueling, first, Guid.NewGuid(), bob.Id, DateTimeOffset.UtcNow));
+            var line = TyreEntry.Create(bob.Id, bob.Id, own, TyreEntryKind.Other, null, Day.AddDays(5), null, "Tow");
+            line.LinkExpense(tow);
+            db.TyreEntries.Add(line);
             await db.SaveChangesAsync();
         }
         var held = ImportRunJson.Read<ImportRunReport>((await FinishedAsync(here, queued.Id)).Report)!.Cars.Single();
         var reason = Assert.Single(held.Refused);
-        Assert.Equal((true, true, ImportRefusedEntry.Car, VehiclePurgeRefusals.HeldBackKey, "refueling"), (held.LeftOut, held.Replacing, reason.Kind, reason.Key, reason.Args["kind"]));
+        Assert.Equal((true, true, ImportRefusedEntry.Car, VehiclePurgeRefusals.HeldBackKey, "expense"), (held.LeftOut, held.Replacing, reason.Kind, reason.Key, reason.Args["kind"]));
         Assert.Equal(["mine", "mine too"], await NotesAsync());
         // And from then on the start itself refuses it, as the page holds it back.
-        var refusal = await Assert.ThrowsAsync<DomainException>(async () => await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), octavia));
-        Assert.Equal((VehiclePurgeRefusals.HeldBackKey, 1), (refusal.Key, refusal.Args["photos"]));
+        var refusal = await Assert.ThrowsAsync<DomainException>(async () => await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), both));
+        Assert.Equal((VehiclePurgeRefusals.HeldBackKey, 1), (refusal.Key, refusal.Args["lines"]));
     }
 
     [Theory, MemberData(nameof(Providers))]

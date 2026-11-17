@@ -10,11 +10,18 @@ public sealed class RunContext
 {
     private static readonly AsyncLocal<RunContext?> Ambient = new();
 
-    public RunContext(Principal starter, IReadOnlyCollection<Guid> vehicleIds)
+    public RunContext(Principal starter, IReadOnlyCollection<Guid> vehicleIds, IRun? run = null)
     {
         Starter = starter;
         VehicleIds = vehicleIds;
+        Run = run;
     }
+
+    /// <summary>
+    /// The run itself (#339), for what outside the database a service does inside it: a file written goes when its savepoint is rolled
+    /// back (<see cref="IRun.OnRollback"/>), a file deleted waits for the commit (<see cref="IRun.AfterCommit"/>).
+    /// </summary>
+    public IRun? Run { get; }
 
     /// <summary>Who the services act as inside the run.</summary>
     public Principal Starter { get; }

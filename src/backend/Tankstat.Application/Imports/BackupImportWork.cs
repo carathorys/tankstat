@@ -21,7 +21,8 @@ public sealed record ImportKindComparison<T>(
     IReadOnlyList<T> Backup, IReadOnlyList<T> New, IReadOnlyList<BackupEntryComparison<T>> Differ, IReadOnlyList<BackupEntryComparison<T>> Same,
     int InTrash, IReadOnlyList<Guid> TargetIds, int TargetTrashed, int WithPhotos, int OnTyreLines) where T : IBackupEntry
 {
-    public bool HeldBack => WithPhotos + OnTyreLines > 0;
+    /// <summary>Only a tyre log line holds a Replace all back (#339: photos come back with their entries, a tyre amount would not).</summary>
+    public bool HeldBack => OnTyreLines > 0;
 }
 
 /// <summary>A backup's car against its target as it is now; <see cref="TargetLinks"/>: the target's visits' links (an expense, live or trashed, and a schedule it marked done).</summary>
@@ -316,7 +317,7 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
 /// </summary>
 public sealed class BackupImportWork(
     BackupImportRules rules, VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring,
-    BackupTyreReplay tyreReplay, IExpenseRepository expenseRows, Tyres.ITyreRepository tyreBooks, ILogger<BackupImportWork> logger)
+    BackupTyreReplay tyreReplay, BackupMediaWork mediaWork, IExpenseRepository expenseRows, Tyres.ITyreRepository tyreBooks, ILogger<BackupImportWork> logger)
 {
     /// <summary>The kinds of a refused tyre row (#339): a set (its name as the title), the lines of no set.</summary>
     public const string TyreSetKind = "tyreSet", NoSetLinesKind = "tyreLines";
@@ -419,6 +420,7 @@ public sealed class BackupImportWork(
         int fuelAdded = 0, fuelChanged = 0, expensesAdded = 0, expensesChanged = 0, schedulesAdded = 0, schedulesChanged = 0;
         // The car's entries afterwards, by the backup's id: what was there (the same, or differing) and what is added. For the links.
         var (expenseIds, scheduleIds) = (new Dictionary<Guid, Guid>(work.Expenses.Counterparts), new Dictionary<Guid, Guid>(work.Schedules.Counterparts));
+        var fuelIds = new Dictionary<Guid, Guid>(work.Refuelings.Counterparts); // where each backup's refuelling is in the car: its photos follow (#339)
 
         // The logs: changes and additions together, oldest first, each reading checked against the ones saved before it and what the car
         // has. One that is refused is tried again after the others, as long as a round saves something: a change can need another one
@@ -426,7 +428,7 @@ public sealed class BackupImportWork(
         var steps = work.Refuelings.Takes.Select(t => new Step(t.Entry.Values.Date, t.Entry.Values.Odometer ?? 0, BackupImportRules.Refueling, null,
                 () => refuelings.UpdateAsync(t.TargetId, Whole(t.Entry.Values), ct, recalculateConsumption: false), () => fuelChanged++))
             .Concat(work.Refuelings.Adds.Select(r => new Step(r.Values.Date, r.Values.Odometer ?? 0, BackupImportRules.Refueling, null,
-                () => refuelings.LogAsync(vehicle.Id, r.Values, ct, recalculateConsumption: false), () => fuelAdded++)))
+                async () => fuelIds[r.Id] = (await refuelings.LogAsync(vehicle.Id, r.Values, ct, recalculateConsumption: false)).Id, () => fuelAdded++)))
             .Concat(work.Expenses.Takes.Select(t => new Step(t.Entry.Values.Date, t.Entry.Values.Odometer ?? 0, BackupImportRules.Expense, t.Entry.Values.Title,
                 () => expenses.UpdateAsync(t.TargetId, Whole(t.Entry.Values), ct), () => expensesChanged++)))
             .Concat(work.Expenses.Adds.Select(e => new Step(e.Values.Date, e.Values.Odometer ?? 0, BackupImportRules.Expense, e.Values.Title,
@@ -555,6 +557,12 @@ public sealed class BackupImportWork(
                     if (expenseIds.TryGetValue(expense.Id, out var expenseId) && scheduleIds.TryGetValue(schedule, out var scheduleId)
                         && await recurring.LinkAsync(expenseId, scheduleId, ct)) links++;
 
+        // The media (#339): the photos of the logs that are the car's now, the picture, the widgets, the dashboards.
+        ImportMediaReport? mediaReport = null;
+        if (chosen.Kinds?.Media is { } media)
+            mediaReport = await mediaWork.RunAsync(run, file, car.Car.Id, vehicle, starter, media,
+                (type, log) => (type == Domain.Photos.LogType.Refueling ? fuelIds : expenseIds).TryGetValue(log, out var here) ? here : null, Refused, step, ct);
+
         var left = Leftovers(compared, work);
         return new ImportCarReport(
             chosen.CarId, car.Car.Name, vehicle.Id, chosen.TargetVehicleId is null ? null : vehicle.Name, chosen.TargetVehicleId is null, LeftOut: false,
@@ -564,7 +572,7 @@ public sealed class BackupImportWork(
                 new ImportKindReport(BackupImportRules.Refueling, work.Refuelings.Mode, fuelAdded, fuelChanged, deleted.Refuelings),
                 new ImportKindReport(BackupImportRules.Expense, work.Expenses.Mode, expensesAdded, expensesChanged, deleted.Expenses),
                 new ImportKindReport(BackupImportRules.Recurring, work.Schedules.Mode, schedulesAdded, schedulesChanged, deleted.Schedules),
-            ], work.Replacing, links, tyreReport);
+            ], work.Replacing, links, tyreReport, mediaReport);
     }
 
     /// <summary>What the car's choices leave as it is, all kinds together.</summary>

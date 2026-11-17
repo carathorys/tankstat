@@ -118,15 +118,16 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
     public async Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var withPhotos = await db.CountLogsWithPhotosAsync(LogType.Refueling, vehicleId, ct);
-        if (withPhotos > 0) return new VehiclePurge(0, withPhotos, 0);
         // Tracked and removed one by one, never a bulk delete: the tombstones the devices follow are written from the change tracker.
         var doomed = await db.Refuelings.IgnoreQueryFilters().Include(r => r.OdometerReading).Include(r => r.Cost).Where(r => r.VehicleId == vehicleId).ToListAsync(ct);
+        // Their photos' rows go with them (#339); the images are the caller's to delete.
+        var photos = await db.LogPhotos.Where(p => p.LogType == LogType.Refueling && p.VehicleId == vehicleId).ToListAsync(ct);
+        db.LogPhotos.RemoveRange(photos);
         db.Refuelings.RemoveRange(doomed);
         db.OdometerReadings.RemoveRange(doomed.Where(r => r.OdometerReading is not null).Select(r => r.OdometerReading!));
         db.Costs.RemoveRange(doomed.Where(r => r.Cost is not null).Select(r => r.Cost!));
         await db.SaveChangesAsync(ct);
-        return new VehiclePurge(doomed.Count, 0, 0);
+        return new VehiclePurge(doomed.Count, 0, 0, [.. photos.Select(p => p.ImageId)]);
     }
 
     private static IQueryable<Refueling> Trashed(AppDbContext db, OwnerScope scope) =>

@@ -42,7 +42,8 @@ public sealed record ImportTyreChoice(IReadOnlyList<Guid>? Sets, bool NoSetLines
 }
 
 /// <summary>The kinds' choices for a car; a log kind left out is <see cref="ImportKindChoice.Missing"/>, the tyres left out do not come (#337's way).</summary>
-public sealed record ImportCarKinds(ImportKindChoice? Refuelings = null, ImportKindChoice? Expenses = null, ImportKindChoice? Schedules = null, ImportTyreChoice? Tyres = null)
+public sealed record ImportCarKinds(
+    ImportKindChoice? Refuelings = null, ImportKindChoice? Expenses = null, ImportKindChoice? Schedules = null, ImportTyreChoice? Tyres = null, ImportMediaChoice? Media = null)
 {
     public static readonly ImportCarKinds Missing = new();
 
@@ -89,7 +90,7 @@ public sealed record ImportRefusedEntry(string Kind, DateOnly? Date, string? Tit
 public sealed record ImportCarReport(
     Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules,
     int Existing, int Differing, int InTrash, IReadOnlyList<ImportRefusedEntry> Refused, int RefusedMore,
-    IReadOnlyList<ImportKindReport>? Kinds = null, bool Replacing = false, int Links = 0, ImportTyreReport? Tyres = null);
+    IReadOnlyList<ImportKindReport>? Kinds = null, bool Replacing = false, int Links = 0, ImportTyreReport? Tyres = null, ImportMediaReport? Media = null);
 
 /// <summary>
 /// What came of a car's tyres (#339): the sets imported by name, their lines and single tyres, the lines of no set, the expenses their
@@ -162,7 +163,7 @@ public sealed record ImportCarOffers(BackupFileSummary File, IReadOnlyList<Impor
 public sealed record ImportCarReview(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName,
     int NewRefuelings, int NewExpenses, int NewSchedules, int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash,
-    IReadOnlyList<ImportKindReview> Kinds, bool Links, int LinksLost, ImportTyreReview? Tyres = null, int TyreSteps = 0);
+    IReadOnlyList<ImportKindReview> Kinds, bool Links, int LinksLost, ImportTyreReview? Tyres = null, int TyreSteps = 0, ImportMediaReview? Media = null, int MediaSteps = 0);
 
 /// <summary>What a backup's set is to the car (#339): new, here already (it stays as it is), or one the car's history refuses.</summary>
 public enum ImportSetState { New, Here, Refused }
@@ -185,7 +186,8 @@ public sealed record ImportTyreReview(IReadOnlyList<ImportSetOffer> Sets, int No
 /// <see cref="TargetTrashed"/> of the kind, of which <see cref="WithPhotos"/> and <see cref="OnTyreLines"/> hold a <i>Replace all</i> back.
 /// </summary>
 public sealed record ImportKindReview(
-    string Kind, ImportKindMode Mode, int Backup, int New, int Differ, int Same, int InTrash, int Adds, int Takes, int TargetLive, int TargetTrashed, int WithPhotos, int OnTyreLines);
+    string Kind, ImportKindMode Mode, int Backup, int New, int Differ, int Same, int InTrash, int Adds, int Takes, int TargetLive, int TargetTrashed, int WithPhotos, int OnTyreLines,
+    int PhotosLost = 0);
 
 /// <summary>
 /// An entry of the backup for the <i>Choose…</i> dialog: what tells it apart, and for one that differs both sides of each field that does

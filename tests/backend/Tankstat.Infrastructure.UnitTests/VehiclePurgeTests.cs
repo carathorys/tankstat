@@ -154,7 +154,7 @@ public sealed class VehiclePurgeTests(ITestOutputHelper output) : IAsyncDisposab
     }
 
     [Theory, MemberData(nameof(Providers))]
-    public async Task APhotoOrATyreLogLine_HoldsTheWholeKindBack_NothingIsDeleted(string provider)
+    public async Task ATyreLogLine_HoldsTheExpensesBack_WhilePhotosGoWithTheirLogs(string provider)
     {
         if (Instance(provider) is not { } here) return;
         var bob = await PersonAsync(here, "Bob");
@@ -170,12 +170,14 @@ public sealed class VehiclePurgeTests(ITestOutputHelper output) : IAsyncDisposab
             await db.SaveChangesAsync();
         }
 
-        var fuel = await Assert.ThrowsAsync<DomainException>(() => AsAsync(here, bob, sp => sp.GetRequiredService<RefuelingService>().PurgeForVehicleAsync(car.Id, default)));
         var expense = await Assert.ThrowsAsync<DomainException>(() => AsAsync(here, bob, sp => sp.GetRequiredService<ExpenseService>().PurgeForVehicleAsync(car.Id, default)));
+        Assert.Equal((VehiclePurgeRefusals.HeldBackKey, 0, 1), (expense.Key, expense.Args["photos"], expense.Args["lines"]));
+        Assert.Equal((2, 2, 3, 4, 1), await RowsAsync(here, car.Id)); // nothing deleted
 
-        Assert.Equal((VehiclePurgeRefusals.HeldBackKey, 1, 0), (fuel.Key, fuel.Args["photos"], fuel.Args["lines"]));
-        Assert.Equal((VehiclePurgeRefusals.HeldBackKey, 1, 1), (expense.Key, expense.Args["photos"], expense.Args["lines"]));
-        Assert.Equal((2, 2, 3, 4, 1), await RowsAsync(here, car.Id));
+        // A photo holds nothing back (#339): it goes with its refuelling, its row and (its image's row being none here) nothing else.
+        Assert.Equal(2, await AsAsync(here, bob, sp => sp.GetRequiredService<RefuelingService>().PurgeForVehicleAsync(car.Id, default)));
+        await using var after = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.Equal((0, 1), (await after.LogPhotos.CountAsync(p => p.LogType == LogType.Refueling), await after.LogPhotos.CountAsync(p => p.LogType == LogType.Expense)));
     }
 
     [Theory, MemberData(nameof(Providers))]

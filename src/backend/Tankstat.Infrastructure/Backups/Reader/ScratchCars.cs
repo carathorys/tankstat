@@ -13,7 +13,7 @@ namespace Tankstat.Infrastructure.Backups.Reader;
 /// is left out (the model's query filters hide it), a trashed car's rows with it. Every text handed out is cut to a length
 /// (<see cref="BackupCarShapes.Cut"/>): the rows are the uploader's, and the scratch database enforces no lengths.
 /// </summary>
-internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary summary) : IBackupCars, IAsyncDisposable
+internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary summary, string? archive = null, Tankstat.Application.Backups.BackupPhotos photos = Tankstat.Application.Backups.BackupPhotos.WithPictures) : IBackupCars, IAsyncDisposable
 {
     public const int MaxCars = 10_000;
 
@@ -25,7 +25,7 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
 
     public BackupFileSummary Summary { get; } = summary;
 
-    public static async Task<ScratchCars> CreateAsync(ScratchDatabase database, BackupManifest manifest, CancellationToken ct)
+    public static async Task<ScratchCars> CreateAsync(ScratchDatabase database, BackupManifest manifest, CancellationToken ct, string? archive = null)
     {
         await using var db = database.Read();
         // Only what the summary shows is read, and its texts are cut by the database: a row of the file may be a megabyte and the rows
@@ -56,7 +56,73 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
             BackupCarShapes.Cut(owners.GetValueOrDefault(v.OwnerId)),
             refuelings.GetValueOrDefault(v.Id), expenses.GetValueOrDefault(v.Id), schedules.GetValueOrDefault(v.Id))).ToList();
         return new ScratchCars(database, new BackupFileSummary(
-            manifest.CreatedAt, BackupReaderText.Version(manifest.AppVersion), manifest.WrittenBy == BackupManifest.Export, cars, trashed));
+            manifest.CreatedAt, BackupReaderText.Version(manifest.AppVersion), manifest.WrittenBy == BackupManifest.Export, cars, trashed), archive, manifest.Contents.Photos);
+    }
+
+    /// <summary>The most photo rows and saved widgets a car is read with: ten photos a log for every log is far past this.</summary>
+    public const int MaxMediaRowsPerCar = 100_000;
+
+    public async Task<BackupMedia?> ReadMediaAsync(Guid carId, CancellationToken ct)
+    {
+        if (Summary.Cars.All(c => c.Id != carId)) return null;
+        try
+        {
+            await using var db = database.Read();
+            var picture = await db.Vehicles.Where(v => v.Id == carId).Select(v => v.PictureImageId).FirstOrDefaultAsync(ct);
+            var leftOut = photos == Tankstat.Application.Backups.BackupPhotos.LeftOut;
+            List<BackupPhoto> logPhotos = [];
+            if (!leftOut)
+            {
+                if (await db.LogPhotos.CountAsync(p => p.VehicleId == carId, ct) > MaxMediaRowsPerCar) throw NotABackup();
+                // Only photos of live logs (the query filters hide the trash), in the order a log shows them.
+                var fuel = db.Refuelings.Where(r => r.VehicleId == carId).Select(r => r.Id);
+                var costs = db.Expenses.Where(e => e.VehicleId == carId).Select(e => e.Id);
+                logPhotos = [.. (await db.LogPhotos.AsNoTracking().Where(p => p.VehicleId == carId
+                        && ((p.LogType == Tankstat.Domain.Photos.LogType.Refueling && fuel.Contains(p.LogId)) || (p.LogType == Tankstat.Domain.Photos.LogType.Expense && costs.Contains(p.LogId))))
+                    .Select(p => new { p.LogType, p.LogId, p.ImageId, p.CreatedAt }).ToListAsync(ct))
+                    .OrderBy(p => p.CreatedAt).ThenBy(p => p.ImageId).Select(p => new BackupPhoto(p.LogType, p.LogId, p.ImageId, p.CreatedAt))];
+            }
+            if (await db.VehicleCharts.CountAsync(c => c.VehicleId == carId, ct) > MaxMediaRowsPerCar
+                || await db.VehicleCharts.AnyAsync(c => c.VehicleId == carId && c.Title.Length > Tankstat.Domain.Charts.VehicleChart.MaxTitleLength, ct))
+                throw NotABackup();
+            var charts = await db.VehicleCharts.AsNoTracking().Where(c => c.VehicleId == carId).OrderBy(c => c.CreatedAt).ThenBy(c => c.Id).ToListAsync(ct);
+            var dashboards = new List<BackupDashboard>();
+            if (await db.VehicleDashboardLayouts.AsNoTracking().FirstOrDefaultAsync(l => l.VehicleId == carId, ct) is { } shared) dashboards.Add(new BackupDashboard(null, shared.Values));
+            foreach (var own in await db.UserDashboardLayouts.AsNoTracking().Where(l => l.VehicleId == carId).Take(MaxMediaRowsPerCar).ToListAsync(ct))
+                dashboards.Add(new BackupDashboard(own.UserId, own.Values));
+            return new BackupMedia(picture, logPhotos, leftOut, charts, dashboards);
+        }
+        catch (Exception e) when (e is InvalidOperationException or InvalidCastException or FormatException or Microsoft.Data.Sqlite.SqliteException or System.Text.Json.JsonException)
+        {
+            throw NotABackup(); // a row that is not its table's: a value no column of ours takes
+        }
+    }
+
+    public async Task<byte[]?> ReadImageAsync(Guid carId, BackupPhoto? photo, Guid imageId, int maxBytes, CancellationToken ct)
+    {
+        if (archive is null || Summary.Cars.All(c => c.Id != carId)) return null;
+        // The file's name is made from ids alone, as the writer made it below each root: the log's folder, or the car's picture's.
+        var folder = photo is null ? Tankstat.Domain.Images.ImageFolders.VehiclePicture(carId) : Tankstat.Domain.Images.ImageFolders.LogPhotos(carId, photo.LogType, photo.LogId);
+        var name = imageId.ToString("N");
+        string[] candidates = photo is null
+            ? [$"files/pictures/{folder}/{name}"]
+            : [$"files/photos/{folder}/{name}", $"files/pictures/{folder}/{name}"];
+        using var zip = System.IO.Compression.ZipFile.OpenRead(archive);
+        foreach (var candidate in candidates)
+        {
+            if (zip.GetEntry(candidate) is not { } entry) continue;
+            await using var stream = entry.Open();
+            var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, ct)) > 0)
+            {
+                buffer.Write(chunk, 0, read);
+                if (buffer.Length > maxBytes) break; // one more than allowed is enough to refuse it
+            }
+            return buffer.ToArray();
+        }
+        return null;
     }
 
     /// <summary>The most rows of one tyre table a car is read with: a lifetime of tyres is a few hundred.</summary>

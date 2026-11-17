@@ -42,7 +42,7 @@ public interface IRefuelingRepository
 
     /// <summary>
     /// Deletes every refuelling of the vehicle for good, those in the trash too, with their readings and costs, through the change tracker
-    /// (the devices learn of each). Deletes nothing when one of them has a photo (<see cref="VehiclePurge.HeldBack"/>).
+    /// (the devices learn of each), and their photos' rows (#339), whose images it hands back.
     /// </summary>
     Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct);
 }

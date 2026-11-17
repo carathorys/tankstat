@@ -14,7 +14,7 @@ namespace Tankstat.Application.Imports;
 /// server's queue (<see cref="IBackupImportRunner"/>): one run at a time on the instance, the others wait in line.
 /// </summary>
 public sealed class BackupImportRunService(
-    AccessService access, BackupImportService imports, IBackupImportSessions sessions, IImportTargetReader targets, BackupImportRules rules,
+    AccessService access, BackupImportService imports, IBackupImportSessions sessions, IImportTargetReader targets, BackupImportRules rules, BackupMediaWork media,
     IImportRunRepository runs, IBackupImportRunner runner, IRunScope scope, IUserRepository users, ImportRunNotifier notifier, TimeProvider clock,
     ILogger<BackupImportRunService> logger)
 {
@@ -63,25 +63,38 @@ public sealed class BackupImportRunService(
                 throw new DomainException(BackupImportRules.ReplaceNotConfirmedKey, "Type the car's name to confirm what is deleted.", new { Car = target.Name });
             var tyreExpenses = tyres.ExpensesOf(tyreChoice);
             var work = BackupImportRules.Work(compared, choice.Kinds, tyreExpenses);
+            // The media (#339): where each of the backup's logs will be (Guid.Empty: it comes as a new one), so its photos are counted.
+            var mediaChoice = choice.Kinds?.Media;
+            var adds = (work.Refuelings.Adds.Select(e => e.Id).ToHashSet(), work.Expenses.Adds.Select(e => e.Id).Concat(tyreExpenses).ToHashSet());
+            Guid? LogOf(Domain.Photos.LogType type, Guid log) => type == Domain.Photos.LogType.Refueling
+                ? adds.Item1.Contains(log) ? Guid.Empty : work.Refuelings.Counterparts.TryGetValue(log, out var fuel) ? fuel : null
+                : adds.Item2.Contains(log) ? Guid.Empty : work.Expenses.Counterparts.TryGetValue(log, out var cost) ? cost : null;
+            var mediaReview = await media.ReviewAsync(file, car.Car.Id, target, me, LogOf, ct);
+            var photosComing = mediaChoice?.Photos == true;
+            var fuelLost = target is not null && work.Refuelings.Purge ? await media.PhotosLostAsync(file, car.Car.Id, target, Domain.Photos.LogType.Refueling, photosComing, ct) : 0;
+            var expensesLost = target is not null && work.Expenses.Purge ? await media.PhotosLostAsync(file, car.Car.Id, target, Domain.Photos.LogType.Expense, photosComing, ct) : 0;
+            var mediaSteps = mediaChoice is null ? 0 : (mediaChoice.Photos ? mediaReview.PhotosNew + mediaReview.PhotosHere : 0) + (mediaChoice.Picture && mediaReview.Picture ? 1 : 0)
+                + (mediaChoice.Charts ? mediaReview.ChartsNew + mediaReview.ChartsHere : 0);
             var (fuel, expenses, schedules) = (BackupImportRules.Left(compared.Refuelings, work.Refuelings), BackupImportRules.Left(compared.Expenses, work.Expenses), BackupImportRules.Left(compared.Schedules, work.Schedules));
             reviews.Add(new ImportCarReview(car.Car.Id, car.Car.Name, car.Car.OwnerName, car.Car.OwnerId == me.Id, target?.Id, target?.Name,
                 work.Refuelings.Adds.Count, work.Expenses.Adds.Count, work.Schedules.Adds.Count,
                 fuel.Same, expenses.Same, schedules.Same, fuel.Differ + expenses.Differ + schedules.Differ, fuel.InTrash + expenses.InTrash,
                 [
-                    KindReview(BackupImportRules.Refueling, compared.Refuelings, work.Refuelings),
-                    KindReview(BackupImportRules.Expense, compared.Expenses, work.Expenses),
+                    KindReview(BackupImportRules.Refueling, compared.Refuelings, work.Refuelings, fuelLost),
+                    KindReview(BackupImportRules.Expense, compared.Expenses, work.Expenses, expensesLost),
                     KindReview(BackupImportRules.Recurring, compared.Schedules, work.Schedules),
                 ], work.Links, work.LinksLost,
                 new ImportTyreReview([.. tyres.Sets.Select(s => s.Offer)], tyres.NoSetLines.Count,
                     tyres.NoSetLines.Where(l => tyres.Backup.ExpenseOf(l) is { IsDeleted: false }).Select(l => l.ExpenseId).Distinct().Count(), tyreExpenses.Count),
-                TyreSteps: tyres.Chosen(tyreChoice).Count + (tyreChoice is { NoSetLines: true } && tyres.NoSetLines.Count > 0 ? 1 : 0)));
+                TyreSteps: tyres.Chosen(tyreChoice).Count + (tyreChoice is { NoSetLines: true } && tyres.NoSetLines.Count > 0 ? 1 : 0),
+                Media: mediaReview, MediaSteps: mediaSteps));
         }
         return reviews;
     }
 
-    private static ImportKindReview KindReview<T>(string kind, ImportKindComparison<T> compared, ImportKindWork<T> work) where T : IBackupEntry => new(
+    private static ImportKindReview KindReview<T>(string kind, ImportKindComparison<T> compared, ImportKindWork<T> work, int photosLost = 0) where T : IBackupEntry => new(
         kind, work.Mode, compared.Backup.Count, compared.New.Count, compared.Differ.Count, compared.Same.Count, compared.InTrash, work.Adds.Count, work.Takes.Count,
-        compared.TargetIds.Count, compared.TargetTrashed, compared.WithPhotos, compared.OnTyreLines);
+        compared.TargetIds.Count, compared.TargetTrashed, compared.WithPhotos, compared.OnTyreLines, photosLost);
 
     /// <summary>
     /// A page of one section of the <i>Choose…</i> dialog (#338): the entries of a kind that are only in the backup, or that differ from
@@ -143,7 +156,7 @@ public sealed class BackupImportRunService(
             if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
             var reviews = await ReviewAsync(token, choices, starting: true, ct); // every refusal that can be foreseen, before anything is queued
             var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
-                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes) + review.TyreSteps, choice.Kinds))]);
+                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes) + review.TyreSteps + review.MediaSteps, choice.Kinds))]);
             var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
             // The file first: the queue ends a waiting run of this server that it holds no file for, so the row must never be there without it.
             runner.Enqueue(run.Id, me.Id, token);

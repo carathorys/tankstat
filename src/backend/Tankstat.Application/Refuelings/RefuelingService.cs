@@ -188,8 +188,7 @@ public sealed class RefuelingService(
 
     /// <summary>
     /// Deletes every refuelling of the vehicle for good, those in the trash too (#338: an import's <i>Replace all</i>). Needs Delete access to
-    /// the vehicle's logs. While any of them has a photo, which a backup cannot bring back yet, nothing is deleted
-    /// and it is refused (<c>import.replaceHeldBack</c>). Returns how many went.
+    /// the vehicle's logs. Their photos go with them (#339). Returns how many went.
     /// </summary>
     public async Task<int> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
@@ -198,6 +197,7 @@ public sealed class RefuelingService(
         if (context.Level < AccessLevel.Delete) throw new ForbiddenException(VehiclePurgeRefusals.NoDeleteKey, "You may not delete this vehicle's logs for good.");
         var purged = await refuelings.PurgeForVehicleAsync(vehicleId, ct);
         if (purged.HeldBack) throw VehiclePurgeRefusals.HeldBack(purged);
+        await photos.DeleteImagesAsync(purged.Photos ?? [], ct); // inside a run their files go after the commit
         logger.LogInformation("User {UserId} deleted every refuelling of vehicle {VehicleId} for good: {Count}", user.Id, vehicleId, purged.Deleted);
         return purged.Deleted;
     }

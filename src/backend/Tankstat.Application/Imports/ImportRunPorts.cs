@@ -61,6 +61,9 @@ public interface IImportTargetReader
     /// trash, have photos, and how many of its expenses belong to a tyre log line.
     /// </summary>
     Task<ImportHeldBack> HeldBackAsync(Vehicle vehicle, CancellationToken ct);
+
+    /// <summary>The images of the photos of the car's logs of one kind, live or in the trash (#339: what a Replace all deletes with them).</summary>
+    Task<IReadOnlyList<Guid>> PhotosAsync(Vehicle vehicle, Domain.Photos.LogType type, CancellationToken ct);
 }
 
 /// <summary>The entries of a car that a backup cannot bring back yet, per kind: counted, never listed.</summary>

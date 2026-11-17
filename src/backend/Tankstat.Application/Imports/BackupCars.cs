@@ -52,6 +52,19 @@ public sealed record BackupExpense(Guid Id, ExpenseInput Values, IReadOnlyList<G
 /// <summary>A schedule of a backup's car.</summary>
 public sealed record BackupSchedule(Guid Id, RecurringExpenseInput Values) : IBackupEntry;
 
+/// <summary>A photo of one of a backup car's logs: which log, the image, and when it was added (the order a log shows its photos in).</summary>
+public sealed record BackupPhoto(Domain.Photos.LogType LogType, Guid LogId, Guid ImageId, DateTimeOffset CreatedAt);
+
+/// <summary>A dashboard of a backup's car: the vehicle's (<see cref="UserId"/> null) or a person's own.</summary>
+public sealed record BackupDashboard(Guid? UserId, Domain.Charts.DashboardLayoutValues Values);
+
+/// <summary>
+/// What else a backup's car holds (#339): its picture's image id, the photos of its live logs in the order they are shown, whether the
+/// backup was made without photos, its saved widgets and its dashboards.
+/// </summary>
+public sealed record BackupMedia(
+    Guid? PictureImageId, IReadOnlyList<BackupPhoto> Photos, bool PhotosLeftOut, IReadOnlyList<Domain.Charts.VehicleChart> Charts, IReadOnlyList<BackupDashboard> Dashboards);
+
 /// <summary>A car of the file with its logs and schedules (nothing that was in the trash).</summary>
 public sealed record BackupCar(BackupCarSummary Car, IReadOnlyList<BackupRefueling> Refuelings, IReadOnlyList<BackupExpense> Expenses, IReadOnlyList<BackupSchedule> Schedules);
 
@@ -62,6 +75,20 @@ public interface IBackupCars
 
     /// <summary>The car with its contents; null when the file has no such car (or it was in the trash).</summary>
     Task<BackupCar?> ReadCarAsync(Guid carId, CancellationToken ct);
+
+    /// <summary>
+    /// What else the car holds (#339): its picture, the photos of its logs (none when the backup was made without them), its saved widgets
+    /// (every one: who may have which is the import's to decide) and its dashboards, the vehicle's and the people's own. Null when the
+    /// file has no such car.
+    /// </summary>
+    Task<BackupMedia?> ReadMediaAsync(Guid carId, CancellationToken ct);
+
+    /// <summary>
+    /// One image's bytes out of the file: a photo of one of the car's logs, or (<paramref name="photo"/> null) the car's picture, found by
+    /// the ids alone (never by a folder the file names). Null when the file has it not; more than <paramref name="maxBytes"/> are not read
+    /// (the bytes then are one longer, for the caller to refuse).
+    /// </summary>
+    Task<byte[]?> ReadImageAsync(Guid carId, BackupPhoto? photo, Guid imageId, int maxBytes, CancellationToken ct);
 
     /// <summary>
     /// The car's tyre history (#339) as the tyre service reads a car's: its sets, their times on the car, the tyre log's lines, single tyres

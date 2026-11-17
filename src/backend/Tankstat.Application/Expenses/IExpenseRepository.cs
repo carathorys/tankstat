@@ -39,8 +39,8 @@ public interface IExpenseRepository
 
     /// <summary>
     /// Deletes every expense of the vehicle for good, those in the trash too, with their readings, costs and the links to the schedules
-    /// they marked done, through the change tracker (the devices learn of each). Deletes nothing when one of them has a photo or belongs
-    /// to a tyre log line (<see cref="VehiclePurge.HeldBack"/>).
+    /// they marked done, through the change tracker (the devices learn of each). Their photos' rows go too (#339), whose images it hands back. Deletes nothing
+    /// when one of them belongs to a tyre log line (<see cref="VehiclePurge.HeldBack"/>).
     /// </summary>
     Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct);
 }

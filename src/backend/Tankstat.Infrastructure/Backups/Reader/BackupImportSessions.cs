@@ -271,7 +271,7 @@ internal sealed class BackupImportSessions(
             ScratchCars cars;
             try
             {
-                cars = await ScratchCars.CreateAsync(database, session.Manifest, ct);
+                cars = await ScratchCars.CreateAsync(database, session.Manifest, ct, Path.Combine(folder, BackupScratchLoad.ArchiveName));
             }
             catch
             {
