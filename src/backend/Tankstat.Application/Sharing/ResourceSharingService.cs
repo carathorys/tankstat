@@ -82,16 +82,23 @@ public sealed class ResourceSharingService(
     {
         RunRestore.Require(await access.RequirePrincipalAsync(ct));
         var vehicle = await ManageableVehicleAsync(vehicleId, ct);
-        var written = 0;
-        foreach (var (userId, level) in granted)
-        {
-            if (userId == vehicle.OwnerId || level == AccessLevel.None) continue;
-            // A purge leaves a car's grants behind (they name the car without a foreign key): one still there is the car's again.
-            if (await grants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct) is null)
-                await grants.AddAsync(ResourceGrant.Create(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, level), ct);
-            written++;
-        }
-        return written;
+        // A purge leaves a car's grants behind (they name the car without a foreign key). The car comes back with the backup's sharing
+        // (#334's T10), exactly: a grant left behind for someone the backup did not share it with goes, one the backup has takes its level.
+        var wanted = granted.Where(g => g.UserId != vehicle.OwnerId && g.Level != AccessLevel.None).GroupBy(g => g.UserId).ToDictionary(g => g.Key, g => g.Last().Level);
+        foreach (var left in (await grants.ListForResourceAsync(ResourceType.Vehicle, vehicle.Id, ct)).Where(g => g.Feature == GrantedFeature.Logs))
+            if (!wanted.TryGetValue(left.GranteeId, out var level)) await grants.RemoveAsync(left, ct);
+            else
+            {
+                if (left.Level != level)
+                {
+                    left.ChangeLevel(level);
+                    await grants.UpdateAsync(left, ct);
+                }
+                wanted.Remove(left.GranteeId);
+            }
+        foreach (var (userId, level) in wanted)
+            await grants.AddAsync(ResourceGrant.Create(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, level), ct);
+        return granted.Where(g => g.UserId != vehicle.OwnerId && g.Level != AccessLevel.None).Select(g => g.UserId).Distinct().Count();
     }
 
     private async Task NotifyAsync(Vehicle vehicle, User grantee, Principal actor, AccessLevel before, AccessLevel after, CancellationToken ct)

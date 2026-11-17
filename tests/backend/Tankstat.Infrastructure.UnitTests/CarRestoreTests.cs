@@ -289,6 +289,44 @@ public sealed partial class BackupImportRunTests
     }
 
     [Theory, MemberData(nameof(Providers))]
+    public async Task APurgedCar_ComesBackWithTheBackupsSharingExactly_NotTheGrantsThePurgeLeftBehind(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, bob, carl, ada) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Bob"), await PersonAsync(here, "Carl"), await PersonAsync(here, "Ada", admin: true));
+        var golf = await AsAsync(here, anna, async sp =>
+        {
+            var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RefuelingService>().LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default);
+            await sp.GetRequiredService<ResourceSharingService>().SetLogAccessAsync(golf, bob.Id, AccessLevel.Delete, default);
+            return golf;
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        // Since the backup: Carl was given access and Bob's lowered to Edit, then the car purged (its grants name it without a foreign key).
+        await AsAsync(here, anna, async sp =>
+        {
+            var sharing = sp.GetRequiredService<ResourceSharingService>();
+            await sharing.SetLogAccessAsync(golf, carl.Id, AccessLevel.Edit, default);
+            await sharing.SetLogAccessAsync(golf, bob.Id, AccessLevel.Edit, default);
+            await sp.GetRequiredService<VehicleService>().DeleteAsync(golf, default);
+            return await sp.GetRequiredService<VehicleService>().EmptyTrashAsync(default);
+        });
+
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null)], default));
+        Assert.Equal(ImportRunState.Done, (await FinishedAsync(here, run.Id)).State);
+
+        // The backup's sharing, exactly: Bob at the backup's level, Carl not at all, and so not told.
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        {
+            var grants = await db.ResourceGrants.Where(g => g.ResourceId == golf).Select(g => new { g.GranteeId, g.Level }).ToListAsync();
+            Assert.Equal([(bob.Id, AccessLevel.Delete)], grants.Select(g => (g.GranteeId, g.Level)));
+        }
+        Assert.Contains(await ToldOfAsync(here, bob.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored);
+        Assert.DoesNotContain(await ToldOfAsync(here, carl.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored);
+    }
+
+    [Theory, MemberData(nameof(Providers))]
     public async Task AReplaceAllOnAnotherPersonsCar_AsksForItsName_AndPutsTheBackupsEntriesBackAsTheyWere_TellingItsOwner(string provider)
     {
         if (Instance(provider, "here") is not { } here) return;
