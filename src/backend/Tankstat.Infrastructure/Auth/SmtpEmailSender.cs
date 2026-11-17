@@ -38,7 +38,7 @@ internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSen
             using var client = new SmtpClient { Timeout = (int)Timeout.TotalMilliseconds };
             await client.ConnectAsync(o.Host, o.Port, security, limit.Token);
             if (!string.IsNullOrEmpty(o.Username)) await client.AuthenticateAsync(o.Username, o.Password, limit.Token);
-            await client.SendAsync(message, limit.Token);
+            await client.SendAsync(FormatOptions.Default, new SmtpSendRequest(message), limit.Token);
             await client.DisconnectAsync(true, limit.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
