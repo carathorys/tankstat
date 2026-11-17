@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './support/test.ts'
-import { pageLoaded, signInAsNewUser } from './support/app.ts'
+import { pageLoaded, signInAsNewUser, tag } from './support/app.ts'
 import { expectSoundLayout } from './support/layout.ts'
 import { importServer } from './support/setup.ts'
 
@@ -217,5 +217,73 @@ test.describe('from a Tankstat backup', () => {
     const puncture = page.getByRole('region', { name: 'Tyre log' }).getByRole('button', { name: 'Puncture repaired, Nordic winter · W1, Dec 2, 2025, €25.00' })
     await expect(puncture).toContainText('A nail')
     await expectSoundLayout(page)
+  })
+
+  // Export my data (#341): a car exported with a passphrase from the Export tab, downloaded, then from its Details tab's dialog (which
+  // replaces the file), and the first file imported back as a new car. On the import server (sign-in off: the instance's one export).
+  test('exports a car with a passphrase, again from its Details tab, and imports the file back as a new car', async ({ page }, testInfo) => {
+    const server = importServer()
+    const id = tag()
+    const name = `Exported ${id}`
+    const passphrase = `a passphrase ${id}`
+    const car = (await api<{ addVehicle: { id: string } }>(page, server.url, 'mutation($i: AddVehicleInput!) { addVehicle(input: $i) { id } }', { i: { name, fuelType: 'PETROL' } })).addVehicle.id
+    for (const [date, odometer] of [['2026-01-15', 1000], ['2026-02-15', 1600]] as const)
+      await api(page, server.url, 'mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }', {
+        i: { vehicleId: car, date, volume: 40, totalCost: 60, currency: 'EUR', odometer, isFullTank: true },
+      })
+
+    await page.goto(`${server.url}/import?tab=export`)
+    await pageLoaded(page)
+    await expect(page.getByRole('heading', { level: 1, name: 'Import and export' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Export', selected: true })).toBeVisible()
+    await page.getByRole('checkbox', { name, exact: true }).check()
+    await page.getByRole('button', { name: 'Choose what to export' }).first().click()
+    await expectSoundLayout(page)
+    await page.getByLabel('Passphrase (optional)', { exact: true }).fill(passphrase)
+    await page.getByLabel('Repeat the passphrase', { exact: true }).fill(passphrase)
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
+    await expect(page.getByText('Your export is ready.')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(/^1 car · .+ · encrypted · kept until /)).toBeVisible()
+    await expectSoundLayout(page)
+    const downloading = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Download' }).click()
+    const download = await downloading
+    expect(download.suggestedFilename()).toMatch(/^tankstat-export-\d{4}-\d{2}-\d{2}\.zip$/)
+    const file = testInfo.outputPath('export.zip')
+    await download.saveAs(file)
+
+    // Export this car, on its Details tab: it says it replaces the file, and leads back to the Export tab.
+    await page.goto(`${server.url}/vehicles/${car}?tab=details`)
+    await pageLoaded(page)
+    await page.getByRole('button', { name: 'Export this car' }).click()
+    const dialog = page.getByRole('dialog', { name: `Export ${name}` })
+    await expect(dialog.getByText(/^An export of yours is kept until .+\. This one replaces it\.$/)).toBeVisible()
+    await expectSoundLayout(page)
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click()
+    await page.getByRole('button', { name: 'Open Import and export' }).click()
+    await expect(page.getByRole('tab', { name: 'Export', selected: true })).toBeVisible()
+    await expect(page.getByText('Your export is ready.')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(/^1 car · .+ · not encrypted · kept until /)).toBeVisible()
+
+    // The first file, imported back as a new car with its passphrase.
+    await page.getByRole('tab', { name: 'Import' }).click()
+    await page.getByRole('combobox', { name: 'Source' }).click()
+    await page.getByRole('option', { name: 'Tankstat backup or export' }).click()
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: 'Choose file' }).click()
+    await (await chooser).setFiles(file)
+    await page.getByRole('button', { name: 'Read the file' }).click()
+    await page.getByLabel('Passphrase', { exact: true }).fill(passphrase)
+    await page.getByRole('button', { name: 'Open the file' }).click()
+    await expect(page.getByRole('status').filter({ hasText: /: 1 car\.$/ })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Next' }).click()
+    const region = page.getByRole('region', { name, exact: true })
+    await region.getByRole('checkbox', { name, exact: true }).check()
+    await region.getByRole('checkbox', { name: 'As a new car' }).check()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Import', exact: true }).click()
+    await expect(page.getByRole('status').filter({ hasText: 'Import finished: 1 car.' })).toBeVisible({ timeout: 60_000 })
+    const both = (await cars(page, server.url)).filter((c) => c.name === name)
+    expect(both.map((c) => c.refuelingCount)).toEqual([2, 2])
   })
 })
