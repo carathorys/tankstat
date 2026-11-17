@@ -149,7 +149,7 @@
       "CARS_RESTORED_one": "{{actor}} {{count}} autót állított vissza a(z) {{date}}-i mentésből: {{names}}.",
       "CARS_RESTORED_other": "{{actor}} {{count}} autót állított vissza a(z) {{date}}-i mentésből: {{names}}.",
       "CAR_RESTORED_back": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: {{count}} bejegyzés került vissza.",
-      "CAR_RESTORED_replaced": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: {{count}} {{kind}} helyére a mentés adatai kerültek.",
+      "CAR_RESTORED_replaced": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: a(z) {{kind}} helyére a mentés {{count}} bejegyzése került.",
       "CAR_RESTORED_again": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből. Újra a tiéd."
     }
   },
@@ -1199,7 +1199,9 @@
       "estimateSpan": "A becslés kezdőnapja a zárónapja előtt legyen, és ne a jövőben."
     },
     "restore": {
-      "alreadyRunning": "Már fut vagy vár egy visszaállításod."
+      "alreadyRunning": "Már fut vagy vár egy visszaállításod.",
+      "expired": "Ez a visszaállítás lejárt. Nyisd meg újra a mentést a Mentések oldalról.",
+      "ownerGone": "Annak, akihez a(z) {{car}} autónak vissza kellett volna kerülnie, már nincs fiókja: válassz mást, és állítsd vissza újra."
     }
   },
   "a11y": {
@@ -1770,7 +1772,8 @@
       "next": "Következő oldal",
       "page": "{{page}}. oldal / {{pages}}",
       "back": "Vissza",
-      "review": "Áttekintés"
+      "review": "Áttekintés",
+      "nothingChosen": "Válassz legalább egy visszaállítandó fajtát a(z) {{car}} autóhoz, vagy hagyd ki az autót."
     },
     "review": {
       "missing": "{{list}} hiányzik, és visszakerül a saját azonosítójával, azzal, aki rögzítette.",
@@ -1793,7 +1796,14 @@
       "peopleLeftOut_other": "{{count}} saját diagram vagy irányítópult kimaradt: a gazdájuknak nincs itt fiókja, vagy nem látja az autót."
     },
     "tyres": {
-      "inTrash": "Itt a kukában van: ott marad."
+      "inTrash": "Itt a kukában van: ott marad.",
+      "reminders": "A visszaállított szettek cseréinek emlékeztetői elölről kezdődnek.",
+      "imported_one": "Visszakerült {{count}} gumiszett ({{names}}) {{lines}} sorral és {{tyres}} egyedi gumival.",
+      "imported_other": "Visszakerült {{count}} gumiszett ({{names}}) {{lines}} sorral és {{tyres}} egyedi gumival.",
+      "importedNoSet_one": "Visszakerült a gumiszervizkönyv {{count}} szetthez nem tartozó sora.",
+      "importedNoSet_other": "Visszakerült a gumiszervizkönyv {{count}} szetthez nem tartozó sora.",
+      "amountsHere_one": "Soraik {{count}} összege már az autó kiadásai között van: ott marad, és a sor nélküle tér vissza.",
+      "amountsHere_other": "Soraik {{count}} összege már az autó kiadásai között van: ott maradnak, és a sorok nélkülük térnek vissza."
     },
     "kinds": {
       "open": "Válaszd ki, mi kerüljön vissza",
@@ -1807,6 +1817,53 @@
         "text": "A(z) {{car}} tulajdonosa {{owner}}. A jelenlegi {{list}} véglegesen törlődik, és a mentés adatai kerülnek a helyére.",
         "undone": "Ez nem vonható vissza, és a kukába sem kerül. {{owner}} és mindenki, akivel az autó meg van osztva, értesítést kap.",
         "confirm": "Törlés és visszaállítás"
+      },
+      "newCar": "Az egészében visszatérő autónak nincs mihez hasonlítani: minden fajta egészében tér vissza, vagy egyáltalán nem.",
+      "noLinks": "A szervizlátogatások kapcsolat nélkül térnek vissza: a kiadások és a rendszeres kiadások nem mindkettő kerül vissza.",
+      "allOrNothing": "Ha egy bejegyzést nem lehet menteni, a(z) {{car}} pontosan olyan marad, amilyen: semmi nem törlődik és semmi nem kerül vissza.",
+      "finishedOf": "A visszaállítás elkészült: {{done}}/{{count}} autó.",
+      "refueling": {
+        "none": "A mentés tankolásaiból semmi nem kerül vissza.",
+        "reviewNone": "Tankolások: semmi nem kerül vissza.",
+        "replaced": "Lecserélt tankolások: {{deleted}} törölve, {{imported}} visszaállítva.",
+        "imported_one": "Visszakerült {{count}} tankolás; {{taken}} a mentés értékeit kapta.",
+        "imported_other": "Visszakerült {{count}} tankolás; {{taken}} a mentés értékeit kapta.",
+        "leftRefused": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került vissza: a mentés egyik tankolását nem sikerült menteni.",
+        "replace_one": "A(z) {{car}} {{count}} tankolása és a kukájában lévő {{trash}} véglegesen törlődik, majd a mentés {{total}} tankolása kerül a helyükre.",
+        "replace_other": "A(z) {{car}} {{count}} tankolása és a kukájában lévő {{trash}} véglegesen törlődik, majd a mentés {{total}} tankolása kerül a helyükre.",
+        "replaceNoTrash_one": "A(z) {{car}} {{count}} tankolása véglegesen törlődik, majd a mentés {{total}} tankolása kerül a helyére.",
+        "replaceNoTrash_other": "A(z) {{car}} {{count}} tankolása véglegesen törlődik, majd a mentés {{total}} tankolása kerül a helyükre.",
+        "reviewReplace_one": "{{count}} tankolása és a kukában lévő {{trash}} véglegesen törlődik, és a mentés {{total}} tankolása kerül a helyükre.",
+        "reviewReplace_other": "{{count}} tankolása és a kukában lévő {{trash}} véglegesen törlődik, és a mentés {{total}} tankolása kerül a helyükre."
+      },
+      "expense": {
+        "none": "A mentés kiadásaiból semmi nem kerül vissza.",
+        "reviewNone": "Kiadások: semmi nem kerül vissza.",
+        "replaced": "Lecserélt kiadások: {{deleted}} törölve, {{imported}} visszaállítva.",
+        "imported_one": "Visszakerült {{count}} kiadás; {{taken}} a mentés értékeit kapta.",
+        "imported_other": "Visszakerült {{count}} kiadás; {{taken}} a mentés értékeit kapta.",
+        "leftRefused": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került vissza: a mentés egyik kiadását nem sikerült menteni.",
+        "replace_one": "A(z) {{car}} {{count}} kiadása és a kukájában lévő {{trash}} véglegesen törlődik, majd a mentés {{total}} kiadása kerül a helyükre.",
+        "replace_other": "A(z) {{car}} {{count}} kiadása és a kukájában lévő {{trash}} véglegesen törlődik, majd a mentés {{total}} kiadása kerül a helyükre.",
+        "replaceNoTrash_one": "A(z) {{car}} {{count}} kiadása véglegesen törlődik, majd a mentés {{total}} kiadása kerül a helyére.",
+        "replaceNoTrash_other": "A(z) {{car}} {{count}} kiadása véglegesen törlődik, majd a mentés {{total}} kiadása kerül a helyükre.",
+        "reviewReplace_one": "{{count}} kiadása és a kukában lévő {{trash}} véglegesen törlődik, és a mentés {{total}} kiadása kerül a helyükre.",
+        "reviewReplace_other": "{{count}} kiadása és a kukában lévő {{trash}} véglegesen törlődik, és a mentés {{total}} kiadása kerül a helyükre.",
+        "heldLines": "A Mindet cseréld még nem érhető el: az autó {{lines}} kiadása gumiszervizkönyv-sorhoz tartozik, amelyek összegét a mentés nem tudja visszahozni egy megmaradó szetthez."
+      },
+      "recurring": {
+        "none": "A mentés rendszeres kiadásaiból semmi nem kerül vissza.",
+        "reviewNone": "Rendszeres kiadások: semmi nem kerül vissza.",
+        "replaced": "Lecserélt rendszeres kiadások: {{deleted}} törölve, {{imported}} visszaállítva.",
+        "imported_one": "Visszakerült {{count}} rendszeres kiadás; {{taken}} a mentés értékeit kapta.",
+        "imported_other": "Visszakerült {{count}} rendszeres kiadás; {{taken}} a mentés értékeit kapta.",
+        "leftRefused": "A(z) {{car}} autóból semmi nem törlődött és semmi nem került vissza: a mentés egyik rendszeres kiadását nem sikerült menteni.",
+        "replace_one": "A(z) {{car}} {{count}} rendszeres kiadása és a kukájában lévő {{trash}} véglegesen törlődik, majd a mentés {{total}} rendszeres kiadása kerül a helyükre.",
+        "replace_other": "A(z) {{car}} {{count}} rendszeres kiadása és a kukájában lévő {{trash}} véglegesen törlődik, majd a mentés {{total}} rendszeres kiadása kerül a helyükre.",
+        "replaceNoTrash_one": "A(z) {{car}} {{count}} rendszeres kiadása véglegesen törlődik, majd a mentés {{total}} rendszeres kiadása kerül a helyére.",
+        "replaceNoTrash_other": "A(z) {{car}} {{count}} rendszeres kiadása véglegesen törlődik, majd a mentés {{total}} rendszeres kiadása kerül a helyükre.",
+        "reviewReplace_one": "{{count}} rendszeres kiadása és a kukában lévő {{trash}} véglegesen törlődik, és a mentés {{total}} rendszeres kiadása kerül a helyükre.",
+        "reviewReplace_other": "{{count}} rendszeres kiadása és a kukában lévő {{trash}} véglegesen törlődik, és a mentés {{total}} rendszeres kiadása kerül a helyükre."
       }
     },
     "plan": {
@@ -1845,7 +1902,21 @@
       "importedCharts_one": "Visszakerült {{count}} diagram.",
       "importedCharts_other": "Visszakerült {{count}} diagram.",
       "importedDashboard": "Visszakerült az irányítópult.",
-      "importedOwnDashboard": "Visszakerültek a saját irányítópultok."
+      "importedOwnDashboard": "Visszakerültek a saját irányítópultok.",
+      "photosRow": "A fotók a bejegyzéseikkel együtt jönnek (visszaállítottak vagy már itt lévők).",
+      "noPhotos": "Ez a mentés a bejegyzések fotói nélkül készült; egyik sem állítható vissza.",
+      "photos_one": "A visszaállított vagy már itt lévő bejegyzések {{count}} fotója új; {{same}} már megvan.",
+      "photos_other": "A visszaállított vagy már itt lévő bejegyzések {{count}} fotója új; {{same}} már megvan.",
+      "chartsRow": "A megosztott diagramok és a felhasználók sajátjai.",
+      "pictureKept": "A(z) {{target}} autónak van képe; a mentésé nem kerül át.",
+      "pictureReplaces": "A mentés képe véglegesen lecseréli a(z) {{target}} képét.",
+      "ownCharts_one": "{{count}} saját diagram visszakerül a gazdájához.",
+      "ownCharts_other": "{{count}} saját diagram visszakerül a gazdájához.",
+      "dashboardKept": "A(z) {{target}} autónak saját irányítópultja van; a mentésé csak akkor kerül át, ha bejelölöd a Válaszd ki, mi kerüljön vissza alatt (mindenkinek lecserélné, aki látja az autót).",
+      "dashboardReplaces": "A mentés irányítópultja lecseréli a(z) {{target}} autóét mindenkinek, aki látja.",
+      "ownDashboard": "Az autó saját irányítópultjai visszakerülnek a gazdáikhoz.",
+      "ownDashboardRow": "Bejelölve a mentés irányítópultjai lecserélik a felhasználók saját irányítópultjait ennél az autónál.",
+      "ownDashboardKept": "Akinek saját irányítópultja van a(z) {{target}} autóhoz, megtartja; a mentésé nem kerül át."
     }
   },
   "welcome": {

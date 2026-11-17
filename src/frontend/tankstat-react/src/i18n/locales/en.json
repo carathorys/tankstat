@@ -1199,7 +1199,9 @@
       "estimateSpan": "The day the estimate starts must be before the day it ends, and not in the future."
     },
     "restore": {
-      "alreadyRunning": "A restore of yours is running or waiting already."
+      "alreadyRunning": "A restore of yours is running or waiting already.",
+      "expired": "This restore has expired. Open the backup again from the Backups page.",
+      "ownerGone": "The owner {{car}} was to come back to has no account any more: pick another and restore it again."
     }
   },
   "a11y": {
@@ -1770,7 +1772,8 @@
       "next": "Next page",
       "page": "Page {{page}} of {{pages}}",
       "back": "Back",
-      "review": "Review"
+      "review": "Review",
+      "nothingChosen": "Choose at least one kind to restore for {{car}}, or leave the car out."
     },
     "review": {
       "missing": "{{list}} are missing and come back, under their own ids, logged by who logged them.",
@@ -1793,7 +1796,14 @@
       "peopleLeftOut_other": "{{count}} private charts or own dashboards stayed out: their people have no account here or cannot see the car."
     },
     "tyres": {
-      "inTrash": "In the trash here: it stays there."
+      "inTrash": "In the trash here: it stays there.",
+      "reminders": "The swap reminders of restored sets start afresh.",
+      "imported_one": "Brought back {{count}} tyre set ({{names}}) with {{lines}} lines and {{tyres}} single tyres.",
+      "imported_other": "Brought back {{count}} tyre sets ({{names}}) with {{lines}} lines and {{tyres}} single tyres.",
+      "importedNoSet_one": "Brought back {{count}} line of the tyre log that belongs to no set.",
+      "importedNoSet_other": "Brought back {{count}} lines of the tyre log that belong to no set.",
+      "amountsHere_one": "{{count}} amount of their lines is already among the car's expenses: it stays there, and the line comes without it.",
+      "amountsHere_other": "{{count}} amounts of their lines are already among the car's expenses: they stay there, and the lines come without them."
     },
     "kinds": {
       "open": "Choose what to restore",
@@ -1807,6 +1817,53 @@
         "text": "{{car}} belongs to {{owner}}. Its current {{list}} are deleted for good and replaced by the backup's.",
         "undone": "This cannot be undone, and they will not be in the trash. {{owner}} and everyone the car is shared with are told.",
         "confirm": "Delete and restore"
+      },
+      "newCar": "A car that comes back whole has nothing to compare with: each kind comes whole, or not at all.",
+      "noLinks": "Visits come without their link: expenses and recurring expenses are not both restored.",
+      "allOrNothing": "If an entry cannot be saved, {{car}} stays exactly as it is: nothing of it is deleted or restored.",
+      "finishedOf": "Restore finished: {{done}} of {{count}} cars.",
+      "refueling": {
+        "none": "None of the backup's refuellings are restored.",
+        "reviewNone": "No refuellings are restored.",
+        "replaced": "Replaced refuellings: {{deleted}} deleted, {{imported}} restored.",
+        "imported_one": "Brought back {{count}} refuelling; changed {{taken}} to the backup's values.",
+        "imported_other": "Brought back {{count}} refuellings; changed {{taken}} to the backup's values.",
+        "leftRefused": "Nothing of {{car}} was deleted or restored: one of the backup's refuellings could not be saved.",
+        "replace_one": "{{car}}'s {{count}} refuelling and the {{trash}} in its trash are deleted for good, then the backup's {{total}} come in.",
+        "replace_other": "{{car}}'s {{count}} refuellings and the {{trash}} in its trash are deleted for good, then the backup's {{total}} come in.",
+        "replaceNoTrash_one": "{{car}}'s {{count}} refuelling is deleted for good, then the backup's {{total}} come in.",
+        "replaceNoTrash_other": "{{car}}'s {{count}} refuellings are deleted for good, then the backup's {{total}} come in.",
+        "reviewReplace_one": "Its {{count}} refuelling and the {{trash}} in the trash are deleted for good and replaced by the backup's {{total}}.",
+        "reviewReplace_other": "Its {{count}} refuellings and the {{trash}} in the trash are deleted for good and replaced by the backup's {{total}}."
+      },
+      "expense": {
+        "none": "None of the backup's expenses are restored.",
+        "reviewNone": "No expenses are restored.",
+        "replaced": "Replaced expenses: {{deleted}} deleted, {{imported}} restored.",
+        "imported_one": "Brought back {{count}} expense; changed {{taken}} to the backup's values.",
+        "imported_other": "Brought back {{count}} expenses; changed {{taken}} to the backup's values.",
+        "leftRefused": "Nothing of {{car}} was deleted or restored: one of the backup's expenses could not be saved.",
+        "replace_one": "{{car}}'s {{count}} expense and the {{trash}} in its trash are deleted for good, then the backup's {{total}} come in.",
+        "replace_other": "{{car}}'s {{count}} expenses and the {{trash}} in its trash are deleted for good, then the backup's {{total}} come in.",
+        "replaceNoTrash_one": "{{car}}'s {{count}} expense is deleted for good, then the backup's {{total}} come in.",
+        "replaceNoTrash_other": "{{car}}'s {{count}} expenses are deleted for good, then the backup's {{total}} come in.",
+        "reviewReplace_one": "Its {{count}} expense and the {{trash}} in the trash are deleted for good and replaced by the backup's {{total}}.",
+        "reviewReplace_other": "Its {{count}} expenses and the {{trash}} in the trash are deleted for good and replaced by the backup's {{total}}.",
+        "heldLines": "Replace all is not available yet: {{lines}} of the car's expenses belong to tyre log lines, whose amounts a backup cannot bring back to a set that stays."
+      },
+      "recurring": {
+        "none": "None of the backup's recurring expenses are restored.",
+        "reviewNone": "No recurring expenses are restored.",
+        "replaced": "Replaced recurring expenses: {{deleted}} deleted, {{imported}} restored.",
+        "imported_one": "Brought back {{count}} recurring expense; changed {{taken}} to the backup's values.",
+        "imported_other": "Brought back {{count}} recurring expenses; changed {{taken}} to the backup's values.",
+        "leftRefused": "Nothing of {{car}} was deleted or restored: one of the backup's recurring expenses could not be saved.",
+        "replace_one": "{{car}}'s {{count}} recurring expense and the {{trash}} in its trash are deleted for good, then the backup's {{total}} come in.",
+        "replace_other": "{{car}}'s {{count}} recurring expenses and the {{trash}} in its trash are deleted for good, then the backup's {{total}} come in.",
+        "replaceNoTrash_one": "{{car}}'s {{count}} recurring expense is deleted for good, then the backup's {{total}} come in.",
+        "replaceNoTrash_other": "{{car}}'s {{count}} recurring expenses are deleted for good, then the backup's {{total}} come in.",
+        "reviewReplace_one": "Its {{count}} recurring expense and the {{trash}} in the trash are deleted for good and replaced by the backup's {{total}}.",
+        "reviewReplace_other": "Its {{count}} recurring expenses and the {{trash}} in the trash are deleted for good and replaced by the backup's {{total}}."
       }
     },
     "plan": {
@@ -1845,7 +1902,21 @@
       "importedCharts_one": "Brought back {{count}} chart.",
       "importedCharts_other": "Brought back {{count}} charts.",
       "importedDashboard": "Brought back the dashboard.",
-      "importedOwnDashboard": "Brought back people's own dashboards."
+      "importedOwnDashboard": "Brought back people's own dashboards.",
+      "photosRow": "Photos come with their entries (restored or already here).",
+      "noPhotos": "This backup was made without the photos of entries; none can be restored.",
+      "photos_one": "{{count}} photo of entries that are restored or already here is new; {{same}} are already here.",
+      "photos_other": "{{count}} photos of entries that are restored or already here are new; {{same}} are already here.",
+      "chartsRow": "The shared charts, and the people's own.",
+      "pictureKept": "{{target}} has one; the backup's is not taken.",
+      "pictureReplaces": "The backup's picture replaces {{target}}'s for good.",
+      "ownCharts_one": "{{count}} chart of someone's own comes back to them.",
+      "ownCharts_other": "{{count}} charts of people's own come back to them.",
+      "dashboardKept": "{{target}} has its own; the backup's is not taken unless you tick it under Choose what to restore (it would replace it for everyone who sees this car).",
+      "dashboardReplaces": "The backup's dashboard replaces {{target}}'s for everyone who sees it.",
+      "ownDashboard": "People's own dashboards of this car come back to them.",
+      "ownDashboardRow": "Ticked, the backup's replace people's own dashboards of this car.",
+      "ownDashboardKept": "People who have their own dashboard of {{target}} keep it; the backup's is not taken."
     }
   },
   "welcome": {

@@ -194,10 +194,19 @@ export function RestoreCarsPage({ pollMs = RUN_POLL_MS, openingPollMs = OPENING_
   )
 }
 
-/** The opened restore point is closed when the page is left (a run that holds it keeps it; the file stays in the folder). */
+/**
+ * The opened restore point is closed when the page is left (a run that holds it keeps it; the file stays in the folder). A moment later,
+ * and only if nothing mounted again: development's strict mode unmounts and mounts every effect once, which must not close it.
+ */
 function EndOnLeave({ token }: { token: string }) {
   const client = useApolloClient()
-  useEffect(() => () => void client.mutate({ mutation: EndCarRestoreDocument, variables: { token } }).catch(() => undefined), [client, token])
+  const pending = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    window.clearTimeout(pending.current)
+    return () => {
+      pending.current = window.setTimeout(() => void client.mutate({ mutation: EndCarRestoreDocument, variables: { token } }).catch(() => undefined), 0)
+    }
+  }, [client, token])
   return null
 }
 
@@ -319,7 +328,7 @@ function CarsStep({ token, choices, onChoices, onNext }: { token: string; choice
   })
   const data = (cars.data ?? cars.previousData)?.restoreCars
   const picked = Object.values(choices).filter((c) => c.picked)
-  const problem = (c: Choice) => (c.offer.state !== 'HERE' && nothingChosen(c.kinds, c.tyres) ? t('errors.import.nothingChosen', { car: c.offer.car.name }) : null)
+  const problem = (c: Choice) => (c.offer.state !== 'HERE' && nothingChosen(c.kinds, c.tyres) ? t('restore.cars.nothingChosen', { car: c.offer.car.name }) : null)
   const ready = picked.length > 0 && picked.every((c) => problem(c) === null)
   const pages = data ? Math.max(1, Math.ceil(data.total / RESTORE_PAGE_SIZE)) : 1
 
