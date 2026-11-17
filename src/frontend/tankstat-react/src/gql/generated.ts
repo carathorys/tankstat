@@ -415,6 +415,7 @@ export type ImportCarChoiceInput = {
   carId: string;
   confirmedName?: string | null | undefined;
   expenses?: ImportKindChoiceInput | null | undefined;
+  media?: ImportMediaChoiceInput | null | undefined;
   policy?: RefusedEntryPolicy | null | undefined;
   refuelings?: ImportKindChoiceInput | null | undefined;
   schedules?: ImportKindChoiceInput | null | undefined;
@@ -435,6 +436,13 @@ export type ImportKindMode =
   | 'DONT_IMPORT'
   | 'ONLY_MISSING'
   | 'REPLACE_ALL';
+
+export type ImportMediaChoiceInput = {
+  charts: boolean;
+  dashboard: boolean;
+  photos: boolean;
+  picture: boolean;
+};
 
 export type ImportRunFailure =
   | 'CANCELLED'

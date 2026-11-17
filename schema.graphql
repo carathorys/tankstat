@@ -604,6 +604,7 @@ type ImportCarReportInfo {
   replacing: Boolean!
   links: Int!
   tyres: ImportTyreReportInfo
+  media: ImportMediaReportInfo
 }
 
 type ImportCarReviewInfo {
@@ -625,6 +626,7 @@ type ImportCarReviewInfo {
   links: Boolean!
   linksLost: Int!
   tyres: ImportTyreReviewInfo!
+  media: ImportMediaReviewInfo
 }
 
 type ImportedVehicleInfo {
@@ -686,6 +688,32 @@ type ImportKindReviewInfo {
   targetTrashed: Int!
   withPhotos: Int!
   onTyreLines: Int!
+  photosLost: Int!
+}
+
+type ImportMediaReportInfo {
+  photos: Int!
+  photosHere: Int!
+  picture: Boolean!
+  charts: Int!
+  chartsHere: Int!
+  dashboard: Boolean!
+  ownDashboard: Boolean!
+  tilesLeftOut: Int!
+}
+
+type ImportMediaReviewInfo {
+  photosNew: Int!
+  photosHere: Int!
+  photosLeftOut: Boolean!
+  picture: Boolean!
+  targetPicture: Boolean!
+  chartsNew: Int!
+  chartsHere: Int!
+  ownChartsNew: Int!
+  dashboard: Boolean!
+  targetDashboard: Boolean!
+  ownDashboard: Boolean!
 }
 
 type ImportOwnCarInfo {
@@ -1870,6 +1898,7 @@ input ImportCarChoiceInput {
   schedules: ImportKindChoiceInput
   confirmedName: String
   tyres: ImportTyreChoiceInput
+  media: ImportMediaChoiceInput
 }
 
 input ImportKindChoiceInput {
@@ -1878,6 +1907,13 @@ input ImportKindChoiceInput {
   newExceptions: [UUID!]
   takeBackups: Boolean
   differExceptions: [UUID!]
+}
+
+input ImportMediaChoiceInput {
+  photos: Boolean!
+  picture: Boolean!
+  charts: Boolean!
+  dashboard: Boolean!
 }
 
 input ImportTyreChoiceInput {

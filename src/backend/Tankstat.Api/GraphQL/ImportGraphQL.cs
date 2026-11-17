@@ -150,16 +150,36 @@ public sealed record ImportTyreChoiceInput(IReadOnlyList<Guid>? Sets, bool? NoSe
     public ImportTyreChoice ToChoice() => new(Sets, NoSetLines ?? true, Except);
 }
 
+/// <summary>What else of a car comes (#339): the photos of its logs, its picture, its charts (the shared ones and the importer's own), its dashboards.</summary>
+public sealed record ImportMediaChoiceInput(bool Photos, bool Picture, bool Charts, bool Dashboard)
+{
+    public ImportMediaChoice ToChoice() => new(Photos, Picture, Charts, Dashboard);
+}
+
 /// <param name="Tyres">The tyres to import (#339); omit for none.</param>
+/// <param name="Media">The photos, the picture, the charts and the dashboards to import (#339); omit for none.</param>
 public sealed record ImportCarChoiceInput(
     Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy? Policy, ImportKindChoiceInput? Refuelings = null, ImportKindChoiceInput? Expenses = null,
-    ImportKindChoiceInput? Schedules = null, string? ConfirmedName = null, ImportTyreChoiceInput? Tyres = null)
+    ImportKindChoiceInput? Schedules = null, string? ConfirmedName = null, ImportTyreChoiceInput? Tyres = null, ImportMediaChoiceInput? Media = null)
 {
     public ImportCarChoice ToChoice() => new(CarId, TargetVehicleId, Policy ?? RefusedEntryPolicy.ImportTheRest,
-        Refuelings is null && Expenses is null && Schedules is null && Tyres is null
-            ? null : new ImportCarKinds(Refuelings?.ToChoice(), Expenses?.ToChoice(), Schedules?.ToChoice(), Tyres?.ToChoice()),
+        Refuelings is null && Expenses is null && Schedules is null && Tyres is null && Media is null
+            ? null : new ImportCarKinds(Refuelings?.ToChoice(), Expenses?.ToChoice(), Schedules?.ToChoice(), Tyres?.ToChoice(), Media?.ToChoice()),
         ConfirmedName);
 }
+
+/// <summary>
+/// A car's media against the car they go into (#339): photos new and here already (the same file), whether the backup was made without
+/// them, the pictures, charts new and here (and how many of the new are the importer's own), the dashboards.
+/// </summary>
+public sealed record ImportMediaReviewInfo(
+    int PhotosNew, int PhotosHere, bool PhotosLeftOut, bool Picture, bool TargetPicture, int ChartsNew, int ChartsHere, int OwnChartsNew, bool Dashboard, bool TargetDashboard, bool OwnDashboard)
+{
+    public static ImportMediaReviewInfo? From(ImportMediaReview? m) => m is null ? null
+        : new(m.PhotosNew, m.PhotosHere, m.PhotosLeftOut, m.Picture, m.TargetPicture, m.ChartsNew, m.ChartsHere, m.OwnChartsNew, m.Dashboard, m.TargetDashboard, m.OwnDashboard);
+}
+
+public sealed record ImportMediaReportInfo(int Photos, int PhotosHere, bool Picture, int Charts, int ChartsHere, bool Dashboard, bool OwnDashboard, int TilesLeftOut);
 
 /// <summary>A set of the backup against the car (#339): its counts, and for a refused one the reason's key and arguments.</summary>
 public sealed record ImportSetOfferInfo(
@@ -177,14 +197,15 @@ public sealed record ImportTyreReportInfo(IReadOnlyList<string> Sets, int Lines,
 /// <c>onTyreLines</c> of them hold a Replace all back.
 /// </summary>
 public sealed record ImportKindReviewInfo(
-    string Kind, ImportKindMode Mode, int Backup, int New, int Differ, int Same, int InTrash, int Adds, int Takes, int TargetLive, int TargetTrashed, int WithPhotos, int OnTyreLines);
+    string Kind, ImportKindMode Mode, int Backup, int New, int Differ, int Same, int InTrash, int Adds, int Takes, int TargetLive, int TargetTrashed, int WithPhotos, int OnTyreLines,
+    int PhotosLost);
 
 /// <param name="Links">Visits keep their link between an expense and the recurring expenses it marked done (neither kind is left out).</param>
 /// <param name="LinksLost">The target's such links that will not be there after the import.</param>
 public sealed record ImportCarReviewInfo(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName, int NewRefuelings, int NewExpenses, int NewSchedules,
     int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash, IReadOnlyList<ImportKindReviewInfo> Kinds, bool Links, int LinksLost,
-    ImportTyreReviewInfo Tyres);
+    ImportTyreReviewInfo Tyres, ImportMediaReviewInfo? Media);
 
 /// <summary>A value that differs between the backup's entry and the car's, by the input's field name; each side as invariant text (a day as yyyy-MM-dd, an enum by its name here, such as TIME).</summary>
 public sealed record ImportFieldDifferenceInfo(string Field, string? Backup, string? Target);
@@ -211,7 +232,8 @@ public sealed record ImportKindReportInfo(string Kind, ImportKindMode Mode, int 
 /// <param name="Links">The visits' links that were added.</param>
 public sealed record ImportCarReportInfo(
     Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules, int Existing, int Differing, int InTrash,
-    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore, IReadOnlyList<ImportKindReportInfo> Kinds, bool Replacing, int Links, ImportTyreReportInfo? Tyres);
+    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore, IReadOnlyList<ImportKindReportInfo> Kinds, bool Replacing, int Links, ImportTyreReportInfo? Tyres,
+    ImportMediaReportInfo? Media);
 
 /// <summary>
 /// A run of an import: waiting in line (<c>ahead</c> runs before it), running (<c>progress</c>), done (<c>report</c>, its starter's alone)
@@ -229,7 +251,8 @@ public sealed record ImportRunInfo(
         v.Report?.Cars.Select(c => new ImportCarReportInfo(c.CarId, c.Name, c.VehicleId, c.TargetName, c.AsNew, c.LeftOut, c.Refuelings, c.Expenses, c.Schedules, c.Existing, c.Differing, c.InTrash,
             [.. c.Refused.Select(r => new ImportRefusedEntryInfo(r.Kind, r.Date, r.Title, r.Key, JsonSerializer.SerializeToElement(r.Args)))], c.RefusedMore,
             [.. (c.Kinds ?? []).Select(k => new ImportKindReportInfo(k.Kind, k.Mode, k.Imported, k.Changed, k.Deleted))], c.Replacing, c.Links,
-            c.Tyres is { } t ? new ImportTyreReportInfo(t.Sets, t.Lines, t.Tyres, t.NoSetLines, t.Expenses, t.AmountsHere) : null)).ToList(),
+            c.Tyres is { } t ? new ImportTyreReportInfo(t.Sets, t.Lines, t.Tyres, t.NoSetLines, t.Expenses, t.AmountsHere) : null,
+            c.Media is { } m ? new ImportMediaReportInfo(m.Photos, m.PhotosHere, m.Picture, m.Charts, m.ChartsHere, m.Dashboard, m.OwnDashboard, m.TilesLeftOut) : null)).ToList(),
         fileToken, limitMinutes);
 }
 
@@ -251,10 +274,11 @@ public sealed class ImportRunQueries
         [.. (await imports.ReviewAsync(token, [.. cars.Select(c => c.ToChoice())], ct)).Select(r => new ImportCarReviewInfo(
             r.CarId, r.Name, r.OwnerName, r.OwnedByMe, r.TargetVehicleId, r.TargetName, r.NewRefuelings, r.NewExpenses, r.NewSchedules, r.ExistingRefuelings, r.ExistingExpenses,
             r.ExistingSchedules, r.Differing, r.InTrash,
-            [.. r.Kinds.Select(k => new ImportKindReviewInfo(k.Kind, k.Mode, k.Backup, k.New, k.Differ, k.Same, k.InTrash, k.Adds, k.Takes, k.TargetLive, k.TargetTrashed, k.WithPhotos, k.OnTyreLines))],
+            [.. r.Kinds.Select(k => new ImportKindReviewInfo(k.Kind, k.Mode, k.Backup, k.New, k.Differ, k.Same, k.InTrash, k.Adds, k.Takes, k.TargetLive, k.TargetTrashed, k.WithPhotos, k.OnTyreLines, k.PhotosLost))],
             r.Links, r.LinksLost,
             new ImportTyreReviewInfo([.. (r.Tyres?.Sets ?? []).Select(o => new ImportSetOfferInfo(o.Id, o.Name, o.Season, o.State, o.Installations, o.Lines, o.Tyres, o.Expenses, o.RefusalKey,
-                o.RefusalArgs is null ? null : JsonSerializer.SerializeToElement(o.RefusalArgs)))], r.Tyres?.NoSetLines ?? 0, r.Tyres?.NoSetExpenses ?? 0, r.Tyres?.Expenses ?? 0)))];
+                o.RefusalArgs is null ? null : JsonSerializer.SerializeToElement(o.RefusalArgs)))], r.Tyres?.NoSetLines ?? 0, r.Tyres?.NoSetExpenses ?? 0, r.Tyres?.Expenses ?? 0),
+            ImportMediaReviewInfo.From(r.Media)))];
 
     /// <summary>
     /// A page of the Choose dialog: the entries of one kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>) of a backup's car that are
