@@ -59,6 +59,35 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
             manifest.CreatedAt, BackupReaderText.Version(manifest.AppVersion), manifest.WrittenBy == BackupManifest.Export, cars, trashed));
     }
 
+    /// <summary>The most rows of one tyre table a car is read with: a lifetime of tyres is a few hundred.</summary>
+    public const int MaxTyreRowsPerCar = 10_000;
+
+    public async Task<Tankstat.Application.Tyres.TyreBook?> ReadTyresAsync(Guid carId, CancellationToken ct)
+    {
+        if (Summary.Cars.All(c => c.Id != carId)) return null;
+        try
+        {
+            await using var db = database.Read();
+            // Bounded before a row is read, as a car's logs are: counts first, then texts longer than the app allows.
+            if (await db.TyreSets.IgnoreQueryFilters().CountAsync(s => s.VehicleId == carId, ct) > MaxTyreRowsPerCar
+                || await db.TyreInstallations.IgnoreQueryFilters().CountAsync(s => s.VehicleId == carId, ct) > MaxTyreRowsPerCar
+                || await db.TyreEntries.IgnoreQueryFilters().CountAsync(s => s.VehicleId == carId, ct) > MaxTyreRowsPerCar
+                || await db.Tyres.IgnoreQueryFilters().CountAsync(s => s.VehicleId == carId, ct) > MaxTyreRowsPerCar
+                || await db.TyrePlaces.IgnoreQueryFilters().CountAsync(s => s.VehicleId == carId, ct) > MaxTyreRowsPerCar
+                || await db.TyreSets.IgnoreQueryFilters().AnyAsync(s => s.VehicleId == carId && (s.Name.Length > Tankstat.Domain.Tyres.TyreSet.MaxNameLength
+                    || s.Size!.Length > Tankstat.Domain.Tyres.TyreSet.MaxSizeLength), ct)
+                || await db.TyreEntries.IgnoreQueryFilters().AnyAsync(e => e.VehicleId == carId && e.Note!.Length > Tankstat.Domain.Tyres.TyreEntry.MaxNoteLength, ct)
+                || await db.Tyres.IgnoreQueryFilters().AnyAsync(t => t.VehicleId == carId && (t.Label.Length > Tankstat.Domain.Tyres.Tyre.MaxLabelLength
+                    || t.Name!.Length > Tankstat.Domain.Tyres.Tyre.MaxNameLength), ct))
+                throw NotABackup();
+            return await Persistence.Repositories.TyreRepository.LoadAsync(db, carId, ct);
+        }
+        catch (Exception e) when (e is InvalidOperationException or InvalidCastException or FormatException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            throw NotABackup(); // a row that is not its table's: a value no column of ours takes
+        }
+    }
+
     public async Task<BackupCar?> ReadCarAsync(Guid carId, CancellationToken ct)
     {
         if (Summary.Cars.FirstOrDefault(c => c.Id == carId) is not { } car) return null;

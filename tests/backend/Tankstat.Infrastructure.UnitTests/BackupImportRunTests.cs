@@ -324,6 +324,7 @@ public sealed partial class BackupImportRunTests(ITestOutputHelper output) : IAs
         public BackupFileSummary Summary => inner.Summary;
         public Task<BackupCar?> ReadCarAsync(Guid carId, CancellationToken ct) =>
             ++_read > 1 ? throw new InvalidOperationException("Zzcanary: the disk went away") : inner.ReadCarAsync(carId, ct);
+        public Task<Tankstat.Application.Tyres.TyreBook?> ReadTyresAsync(Guid carId, CancellationToken ct) => inner.ReadTyresAsync(carId, ct);
     }
 
     [Theory, MemberData(nameof(Providers))]

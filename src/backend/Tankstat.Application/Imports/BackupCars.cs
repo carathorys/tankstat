@@ -62,6 +62,13 @@ public interface IBackupCars
 
     /// <summary>The car with its contents; null when the file has no such car (or it was in the trash).</summary>
     Task<BackupCar?> ReadCarAsync(Guid carId, CancellationToken ct);
+
+    /// <summary>
+    /// The car's tyre history (#339) as the tyre service reads a car's: its sets, their times on the car, the tyre log's lines, single tyres
+    /// and their places, the trash included (<see cref="Tyres.TyreBook.IsLive"/> tells), and the expenses the lines hold. Null when the file
+    /// has no such car.
+    /// </summary>
+    Task<Tyres.TyreBook?> ReadTyresAsync(Guid carId, CancellationToken ct);
 }
 
 /// <summary>What a service's entity is to the reader: the same shapes a backup's rows are read into, so the two can be compared.</summary>

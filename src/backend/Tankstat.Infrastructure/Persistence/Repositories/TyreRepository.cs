@@ -15,6 +15,12 @@ internal sealed class TyreRepository(IDbContextFactory<AppDbContext> dbFactory, 
     public async Task<TyreBook> LoadAsync(Guid vehicleId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await LoadAsync(db, vehicleId, ct);
+    }
+
+    /// <summary>A car's tyre book from any context of the app's model: the live database's, or a backup's scratch database (#339).</summary>
+    internal static async Task<TyreBook> LoadAsync(AppDbContext db, Guid vehicleId, CancellationToken ct)
+    {
         var sets = await db.TyreSets.AsNoTracking().Where(s => s.VehicleId == vehicleId).ToListAsync(ct);
         var installations = await db.TyreInstallations.AsNoTracking().Where(s => s.VehicleId == vehicleId).ToListAsync(ct);
         var entries = await Entries(db).Where(e => e.VehicleId == vehicleId).ToListAsync(ct);
