@@ -10,19 +10,19 @@ import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import { Loading } from '../../components/Loading.tsx'
 import { Segmented } from '../../components/Segmented.tsx'
 import { DialogButtons, DialogCancel, DialogFrame } from '../../dialogs/DialogFrame.tsx'
 import { Field } from '../../forms/Field.tsx'
 import { FieldInput } from '../../forms/FieldInput.tsx'
-import { BackupImportEntriesDocument, BackupImportReviewDocument, type BackupImportEntriesQuery } from '../../gql/generated.ts'
+import { BackupImportEntriesDocument, BackupImportReviewDocument, RestoreEntriesDocument, RestoreReviewDocument, type ImportEntryPageFieldsFragment } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { MEDIA } from '../../theme/media.ts'
 import { KINDS, tyresInput, useHeldBack, useKindLine, type CarReview, type Kind, type KindChoice, type KindReview, type Kinds, type MediaChoice, type TyreChoice } from './backupKinds.ts'
 import { useKeyText } from '../../i18n/errors.ts'
+import { useImportTranslation, useRestoreMode } from './importMode.ts'
 
 /**
  * *Choose what to import* under a ticked car (#338): closed at first. For a car added to one of the person's own, a block per kind with
@@ -50,7 +50,7 @@ export function KindsDisclosure({
   media: MediaChoice
   onMedia: (media: MediaChoice) => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const [open, setOpen] = useState(false)
   const panel = useId()
   const untouched = KINDS.every((kind) => kinds[kind].mode === 'ONLY_MISSING')
@@ -119,18 +119,22 @@ function TargetKinds({
   media: MediaChoice
   onMedia: (media: MediaChoice) => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const heldBack = useHeldBack()
   const line = useKindLine()
   const [choosing, setChoosing] = useState<Kind | null>(null)
   // The comparison itself, as it is whatever is chosen: the choices are worked out from it here. The tyre choice goes with it, as the
   // expenses the chosen sets' lines hold come with the tyres and are not counted among the expenses (#339); asked again, the rows stay.
-  const compared = useQuery(BackupImportReviewDocument, {
-    variables: { token, cars: [{ carId: car.id, targetVehicleId: target.id, tyres: tyresInput(tyres) }] },
-    fetchPolicy: 'network-only',
-  })
+  // A restore (#340) compares the car of the same id: its own query, the same answer.
+  const restore = useRestoreMode()
+  const cars = [{ carId: car.id, targetVehicleId: target.id, tyres: tyresInput(tyres) }]
+  const imported = useQuery(BackupImportReviewDocument, { variables: { token, cars }, fetchPolicy: 'network-only', skip: restore })
+  const restored = useQuery(RestoreReviewDocument, { variables: { token, cars }, fetchPolicy: 'network-only', skip: !restore })
+  const compared = restore ? restored : imported
   if (compared.error) return <ErrorMessage error={compared.error} />
-  const review = (compared.data ?? compared.previousData)?.backupImportReview[0]
+  const review: CarReview | undefined = restore
+    ? (restored.data ?? restored.previousData)?.restoreReview[0]
+    : (imported.data ?? imported.previousData)?.backupImportReview[0]
   if (!review) return <Loading />
   return (
     <>
@@ -231,7 +235,7 @@ function NewCarTyres({
  * its own: ticked, it replaces it for everyone who sees the car). A row the backup has nothing for is not shown.
  */
 function MediaRows({ review, media, onMedia }: { review: CarReview; media: MediaChoice; onMedia: (media: MediaChoice) => void }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const ids = useId()
   const m = review.media
   if (!m) return null
@@ -275,7 +279,7 @@ function MediaRows({ review, media, onMedia }: { review: CarReview; media: Media
  * car's history refuses shown but not choosable with why, and *Lines not tied to a set* last when the backup has any.
  */
 function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; review: CarReview; tyres: TyreChoice; onTyres: (tyres: TyreChoice) => void }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const keyText = useKeyText()
   const heading = useId()
   const ids = useId()
@@ -289,7 +293,9 @@ function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; revi
   const why = (set: (typeof sets)[number]) =>
     set.state === 'HERE'
       ? t('import.tyres.here')
-      : set.state === 'REFUSED'
+      : set.state === 'IN_TRASH'
+        ? t('restore.tyres.inTrash')
+        : set.state === 'REFUSED'
         ? (keyText(set.refusalKey ?? '', (set.refusalArgs ?? {}) as Record<string, unknown>) ?? set.refusalKey ?? '')
         : null
   return (
@@ -349,7 +355,7 @@ function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; revi
 // ---- the Choose… dialog ------------------------------------------------------------------------------------------
 
 const PAGE = 50
-type Entry = BackupImportEntriesQuery['backupImportEntries']['items'][number]
+type Entry = ImportEntryPageFieldsFragment['items'][number]
 
 const DAYS = new Set(['date', 'lastDoneDate'])
 const YES_NO = new Set(['isFullTank', 'missedPreviousFillUp'])
@@ -357,7 +363,7 @@ const TEXTS = new Set(['note', 'title', 'category', 'currency'])
 
 /** An entry in a few words (its day, reading and main value), and a differing field's value as the page writes such things. */
 function useEntryText() {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const { date, number, money } = useFormat()
   const label = (kind: Kind, entry: Entry): string => {
     const parts: string[] = []
@@ -400,7 +406,7 @@ function ChooseDialog({
   onClose: () => void
   onDone: (choice: KindChoice) => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const phone = useMediaQuery(MEDIA.narrow)
   const [draft, setDraft] = useState<KindChoice>(choice)
   const [shown, setShown] = useState({ fresh: 1, differ: 1 }) // pages of each section
@@ -515,14 +521,19 @@ function EntriesPage({
   children: (entry: Entry, text: ReturnType<typeof useEntryText>) => React.ReactNode
 }) {
   const text = useEntryText()
-  const page = useQuery(BackupImportEntriesDocument, { variables, fetchPolicy: 'network-only' })
+  const restore = useRestoreMode()
+  const { targetVehicleId: _target, ...byId } = variables
+  const imported = useQuery(BackupImportEntriesDocument, { variables, fetchPolicy: 'network-only', skip: restore })
+  const restored = useQuery(RestoreEntriesDocument, { variables: byId, fetchPolicy: 'network-only', skip: !restore })
+  const page = restore ? restored : imported
+  const items: ImportEntryPageFieldsFragment['items'] | undefined = restore ? restored.data?.restoreEntries.items : imported.data?.backupImportEntries.items
   if (page.error) return <ErrorMessage error={page.error} />
-  if (!page.data) return <Loading />
-  return <>{page.data.backupImportEntries.items.map((entry) => children(entry, text))}</>
+  if (!items) return <Loading />
+  return <>{items.map((entry) => children(entry, text))}</>
 }
 
 function DifferingEntry({ name, entry, valueOf, take, onTake }: { name: string; entry: Entry; valueOf: (field: string, text: string | null | undefined) => string; take: boolean; onTake: (take: boolean) => void }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const label = useId()
   return (
     <Stack sx={{ gap: 0.5 }}>
@@ -570,6 +581,8 @@ export interface Replacement {
   linksLost: number
   /** The car's photos the deleted entries take along that the backup does not bring back (#339). */
   photosLost: number
+  /** A restore's (#340): whose car it is, named in the confirmation's heading and its sentences. */
+  owner?: string
 }
 
 const sameName = (typed: string, name: string) => typed.trim().toLowerCase() === name.trim().toLowerCase()
@@ -579,7 +592,7 @@ const sameName = (typed: string, name: string) => typed.trim().toLowerCase() ===
  * turn. Cancel on any of them starts nothing; the last one's button starts the import with the names as they were typed.
  */
 export function ReplaceConfirmations({ cars, onCancel, onConfirmed }: { cars: Replacement[]; onCancel: () => void; onConfirmed: (names: Record<string, string>) => void }) {
-  const { t, i18n } = useTranslation()
+  const { t, i18n } = useImportTranslation()
   const [index, setIndex] = useState(0)
   const [names, setNames] = useState<Record<string, string>>({})
   const car = cars[index]
@@ -598,8 +611,8 @@ export function ReplaceConfirmations({ cars, onCancel, onConfirmed }: { cars: Re
       open
       onClose={onCancel}
       role="alertdialog"
-      title={cars.length > 1 ? t('import.kinds.confirm.titleOf', { n: index + 1, count: cars.length }) : t('import.kinds.confirm.title')}
-      description={t('import.kinds.confirm.text', { list, car: car.target })}
+      title={cars.length > 1 ? t('import.kinds.confirm.titleOf', { n: index + 1, count: cars.length, owner: car.owner, car: car.target }) : t('import.kinds.confirm.title', { owner: car.owner, car: car.target })}
+      description={t('import.kinds.confirm.text', { list, car: car.target, owner: car.owner })}
     >
       <Stack
         component="form"
@@ -613,7 +626,7 @@ export function ReplaceConfirmations({ cars, onCancel, onConfirmed }: { cars: Re
         {car.trashed > 0 && <Typography variant="body2">{t('import.kinds.confirm.trash', { count: car.trashed })}</Typography>}
         {car.linksLost > 0 && <Typography variant="body2">{t('import.kinds.confirm.links', { count: car.linksLost })}</Typography>}
         {car.photosLost > 0 && <Typography variant="body2">{t('import.media.photosLost', { count: car.photosLost })}</Typography>}
-        <Typography variant="body2">{t('import.kinds.confirm.undone')}</Typography>
+        <Typography variant="body2">{t('import.kinds.confirm.undone', { owner: car.owner })}</Typography>
         <Field name="confirmedName" label={t('import.kinds.confirm.field', { car: car.target })}>
           <FieldInput autoComplete="off" value={typed} onChange={(e) => setNames({ ...names, [car.carId]: e.target.value })} />
         </Field>

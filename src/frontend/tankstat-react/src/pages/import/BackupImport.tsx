@@ -9,7 +9,6 @@ import RadioGroup from '@mui/material/RadioGroup'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { Loading } from '../../components/Loading.tsx'
@@ -34,6 +33,7 @@ import { ErrorMessage, SuccessMessage } from '../../messages.tsx'
 import { BackupFileStep } from './BackupFileStep.tsx'
 import { KindsDisclosure, ReplaceConfirmations, type Replacement } from './BackupKinds.tsx'
 import { defaultKinds, defaultMedia, defaultTyres, kindsInput, mediaInput, nothingChosen, tyresInput, type MediaChoice, replaces, useKindLine, type CarReview, type Kind, type Kinds, type TyreChoice } from './backupKinds.ts'
+import { active, useImportTranslation, useRestoreMode } from './importMode.ts'
 
 export type BackupStep = 'file' | 'cars' | 'review' | 'done'
 
@@ -57,7 +57,6 @@ interface Choice {
   media: MediaChoice
 }
 
-const active = (run: ImportRunFieldsFragment | undefined) => run?.state === 'WAITING' || run?.state === 'RUNNING'
 
 /**
  * Importing cars from a Tankstat backup or export (#337), the steps after the source is chosen: the file (#336's step), the cars,
@@ -138,7 +137,7 @@ export function BackupImport({
 
 /** A car's units in short words ("km, L"). */
 function useUnits() {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   return (distance: DistanceUnit, volume: VolumeUnit) => `${t(`units.distanceShort.${distance}`)}, ${t(`units.volumeShort.${volume}`)}`
 }
 
@@ -163,7 +162,7 @@ function CarsStep({
   onBack: () => void
   onNext: () => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const { date } = useFormat()
   const unitsOf = useUnits()
   const offers = useQuery(BackupImportCarsDocument, { variables: { token }, fetchPolicy: 'network-only' })
@@ -253,7 +252,7 @@ function CarCard({
   token: string
   onChange: (change: Partial<Choice>) => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const unitsOf = useUnits()
   const heading = useId()
   const target = choice.asNew ? null : (targets.find((v) => v.id === choice.target) ?? null)
@@ -336,7 +335,7 @@ function ReviewStep({
   onBack: () => void
   onStarted: (run: ImportRunFieldsFragment) => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   // What is compared is the cars, their targets and their kinds' choices: a policy changed here asks nothing again.
   const asked = JSON.stringify(toInput(choices).map(({ policy: _policy, confirmedName: _name, ...car }) => car))
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,12 +412,14 @@ function ReviewStep({
   )
 }
 
-function ReviewCard({ car, kinds, tyres, media, policy, onPolicy }: { car: CarReview; kinds: Kinds; tyres: TyreChoice; media: MediaChoice; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
-  const { t } = useTranslation()
+export function ReviewCard({ car, kinds, tyres, media, policy, onPolicy }: { car: CarReview; kinds: Kinds; tyres: TyreChoice; media: MediaChoice; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
+  const { t } = useImportTranslation()
   const tyreLines = useTyreReviewLines()
   const mediaLines = useMediaReviewLines()
   const line = useKindLine()
   const heading = useId()
+  const restore = useRestoreMode()
+  const restoreLines = useRestoreReviewLines()
   const existing = car.existingRefuelings + car.existingExpenses + car.existingSchedules
   // Only the missing of every kind is said as #337 said it; once a kind has a choice of its own, each kind says what its choice does.
   const perKind = car.kinds.some((k) => k.mode !== 'ONLY_MISSING')
@@ -427,15 +428,21 @@ function ReviewCard({ car, kinds, tyres, media, policy, onPolicy }: { car: CarRe
     <Card component="section" aria-labelledby={heading} sx={{ p: 2 }}>
       <Stack sx={{ gap: 1 }}>
         <Typography id={heading} component="h2" variant="h6">
-          {car.targetName ? t('import.plan.cardAdded', { car: car.name, target: car.targetName }) : t('import.plan.cardNew', { car: car.name })}
+          {restore ? car.name : car.targetName ? t('import.plan.cardAdded', { car: car.name, target: car.targetName }) : t('import.plan.cardNew', { car: car.name })}
         </Typography>
-        {!car.ownedByMe && car.ownerName && (
+        {!restore && !car.ownedByMe && car.ownerName && (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('import.plan.owner', { name: car.ownerName })}
           </Typography>
         )}
         <Stack component="ul" sx={{ gap: 0.5, m: 0, pl: 2.5 }}>
-          {perKind ? (
+          {restore && !perKind ? (
+            restoreLines(car).map((text) => (
+              <Typography key={text} component="li" variant="body2">
+                {text}
+              </Typography>
+            ))
+          ) : perKind ? (
             car.kinds.map((k) => {
               const kind = k.kind as Kind
               return (
@@ -482,11 +489,16 @@ function ReviewCard({ car, kinds, tyres, media, policy, onPolicy }: { car: CarRe
               {line}
             </Typography>
           ))}
-          {car.targetName && (
+          {car.targetName && !restore && (
             <Typography component="li" variant="body2">
               {t('import.plan.pastFigures', { target: car.targetName })}
             </Typography>
           )}
+          {restore && perKind && restoreLines(car, true).map((text) => (
+            <Typography key={text} component="li" variant="body2">
+              {text}
+            </Typography>
+          ))}
         </Stack>
         {replacing ? (
           <Typography variant="body2">{t('import.kinds.allOrNothing', { car: car.targetName ?? car.name })}</Typography>
@@ -509,9 +521,45 @@ function ReviewCard({ car, kinds, tyres, media, policy, onPolicy }: { car: CarRe
   )
 }
 
+/**
+ * A restore's review of a car (#340): what is missing and comes back under its own ids, or the whole car to its owner; what differs and
+ * stays; whose it stays; who gets access back and who had access but has no account. `sharingOnly` for a car whose kinds say the rest.
+ */
+function useRestoreReviewLines() {
+  const { t, i18n } = useImportTranslation()
+  return (car: CarReview, sharingOnly = false): string[] => {
+    const restore = car.restore
+    if (!restore) return []
+    const list = (names: string[]) => new Intl.ListFormat(validLocale(i18n.language, i18n.resolvedLanguage), { type: 'conjunction' }).format(names)
+    const what = list(
+      [
+        car.newRefuelings > 0 ? t('import.kinds.refueling.listItem', { count: car.newRefuelings }) : '',
+        car.newExpenses > 0 ? t('import.kinds.expense.listItem', { count: car.newExpenses }) : '',
+        car.newSchedules > 0 ? t('import.kinds.recurring.listItem', { count: car.newSchedules }) : '',
+      ].filter(Boolean),
+    )
+    const lines: string[] = []
+    if (!sharingOnly) {
+      if (restore.state === 'HERE') {
+        if (what) lines.push(t('restore.review.missing', { list: what }))
+        else lines.push(t('restore.cars.nothingMissing'))
+        if (car.differing > 0) lines.push(t('import.plan.differ', { count: car.differing }))
+      } else if (what) lines.push(t('restore.review.whole', { owner: restore.ownerName ?? '', list: what }))
+    }
+    if (restore.state === 'HERE') {
+      lines.push(t('restore.review.stays', { owner: restore.ownerName ?? '' }))
+      lines.push(t('restore.review.sharingStays'))
+    } else {
+      if (restore.access.length > 0) lines.push(t('restore.review.access', { names: list(restore.access) }))
+      if (restore.goneAccess.length > 0) lines.push(t('restore.review.goneAccess', { names: list(restore.goneAccess) }))
+    }
+    return lines
+  }
+}
+
 /** The review's lines about a car's tyres (#339): the new sets that come, those here that stay, those that cannot come and why. */
 function useTyreReviewLines() {
-  const { t, i18n } = useTranslation()
+  const { t, i18n } = useImportTranslation()
   const keyText = useKeyText()
   return (car: CarReview, tyres: TyreChoice): string[] => {
     const list = (names: string[]) => new Intl.ListFormat(validLocale(i18n.language, i18n.resolvedLanguage), { type: 'conjunction' }).format(names)
@@ -524,6 +572,7 @@ function useTyreReviewLines() {
       )
     const here = sets.filter((s) => s.state === 'HERE')
     if (here.length > 0) lines.push(t('import.tyres.hereSets', { count: here.length, names: list(here.map((s) => s.name)) }))
+    for (const set of sets.filter((s) => s.state === 'IN_TRASH')) lines.push(`${set.name}: ${t('restore.tyres.inTrash')}`)
     for (const set of sets.filter((s) => s.state === 'REFUSED'))
       lines.push(t('import.tyres.refusedSet', { set: set.name, reason: keyText(set.refusalKey ?? '', (set.refusalArgs ?? {}) as Record<string, unknown>) ?? set.refusalKey }))
     if (tyres.noSetLines && car.tyres.noSetLines > 0) lines.push(t('import.tyres.noSetLines', { count: car.tyres.noSetLines, expenses: car.tyres.noSetExpenses }))
@@ -534,7 +583,7 @@ function useTyreReviewLines() {
 
 /** The review's lines about a car's media (#339): photos, the picture, charts, the dashboards, by the choice. */
 function useMediaReviewLines() {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   return (car: CarReview, choice: MediaChoice): string[] => {
     const m = car.media
     if (!m) return []
@@ -559,7 +608,7 @@ function useMediaReviewLines() {
 
 // ---- the run: waiting, running, done, or nothing imported -------------------------------------------------------
 
-function RunView({
+export function RunView({
   run,
   pollMs,
   onChange,
@@ -572,7 +621,7 @@ function RunView({
   onBackToReview?: () => void
   onAnother: () => void
 }) {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   const client = useApolloClient()
   const [cancel, cancelling] = useMutation(CancelImportRunDocument)
   const going = active(run)
@@ -655,7 +704,9 @@ function RunView({
 const CAR_REFUSAL = 'car'
 
 function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: () => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useImportTranslation()
+  const restore = useRestoreMode()
+  const list = (names: string[]) => new Intl.ListFormat(validLocale(i18n.language, i18n.resolvedLanguage), { type: 'conjunction' }).format(names)
   const { date } = useFormat()
   const keyText = useKeyText()
   const cars = run.report ?? []
@@ -681,7 +732,9 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
             <Typography component="h2" variant="h6">
               {putBack
                 ? t('import.kinds.leftAsWas', { car: car.targetName ?? car.name })
-                : car.targetName
+                : restore
+                  ? car.name
+                  : car.targetName
                   ? t('import.plan.cardAdded', { car: car.name, target: car.targetName })
                   : t('import.plan.cardNew', { car: car.name })}
             </Typography>
@@ -756,6 +809,22 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
                 {car.media.dashboard && <Typography variant="body2">{t('import.media.importedDashboard')}</Typography>}
                 {car.media.ownDashboard && <Typography variant="body2">{t('import.media.importedOwnDashboard')}</Typography>}
                 {car.media.tilesLeftOut > 0 && <Typography variant="body2">{t('import.media.tilesLeftOut', { count: car.media.tilesLeftOut })}</Typography>}
+              </>
+            )}
+            {!car.leftOut && car.restore && (
+              <>
+                {car.restore.cameBack && car.restore.ownerName && <Typography variant="body2">{t('restore.report.again', { owner: car.restore.ownerName })}</Typography>}
+                {car.restore.grants > 0 && <Typography variant="body2">{t('restore.report.access', { count: car.restore.grants })}</Typography>}
+                {car.restore.goneGrantees.length > 0 && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {t('restore.report.goneAccess', { names: list(car.restore.goneGrantees) })}
+                  </Typography>
+                )}
+                {car.restore.peopleLeftOut > 0 && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {t('restore.report.peopleLeftOut', { count: car.restore.peopleLeftOut })}
+                  </Typography>
+                )}
               </>
             )}
             {car.vehicleId && !car.leftOut && (

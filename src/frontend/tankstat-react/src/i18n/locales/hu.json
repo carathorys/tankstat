@@ -141,7 +141,16 @@
       "IMPORT_NOT_FINISHED": "Az importálásod nem fejeződött be: semmi nem lett importálva.",
       "IMPORT_CANCELLED": "{{actor}} megszakította az importálásodat: semmi nem lett importálva.",
       "CARS_IMPORTED_one": "{{actor}} {{count}} autót importált egy mentésből: {{names}}.",
-      "CARS_IMPORTED_other": "{{actor}} {{count}} autót importált egy mentésből: {{names}}."
+      "CARS_IMPORTED_other": "{{actor}} {{count}} autót importált egy mentésből: {{names}}.",
+      "RESTORE_FINISHED_one": "A visszaállításod elkészült: {{count}} autó ({{names}}). {{refused}} bejegyzést nem sikerült menteni.",
+      "RESTORE_FINISHED_other": "A visszaállításod elkészült: {{count}} autó ({{names}}). {{refused}} bejegyzést nem sikerült menteni.",
+      "RESTORE_NOT_FINISHED": "A visszaállításod nem fejeződött be: semmi nem került vissza.",
+      "RESTORE_CANCELLED": "{{actor}} megszakította a visszaállításodat: semmi nem került vissza.",
+      "CARS_RESTORED_one": "{{actor}} {{count}} autót állított vissza a(z) {{date}}-i mentésből: {{names}}.",
+      "CARS_RESTORED_other": "{{actor}} {{count}} autót állított vissza a(z) {{date}}-i mentésből: {{names}}.",
+      "CAR_RESTORED_back": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: {{count}} bejegyzés került vissza.",
+      "CAR_RESTORED_replaced": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: {{count}} {{kind}} helyére a mentés adatai kerültek.",
+      "CAR_RESTORED_again": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből. Újra a tiéd."
     }
   },
   "status": {
@@ -816,7 +825,8 @@
         "environmentOlder": "Nincs feljegyezve: egy korábbi kiadás készítette."
       },
       "releaseHold": "Feloldás",
-      "releaseHoldAria": "A(z) {{made}} mentés megtartásának feloldása ({{file}})"
+      "releaseHoldAria": "A(z) {{made}} mentés megtartásának feloldása ({{file}})",
+      "restoreCarsAria": "Autók visszaállítása a(z) {{made}}-i mentésből ({{file}})"
     },
     "imports": {
       "title": "Importálások",
@@ -824,7 +834,10 @@
       "running": "{{name}} importálása {{time}} óta fut ({{cars}} autó, {{done}} / {{total}} bejegyzés).",
       "waiting": "{{name}} importálása {{time}} óta várakozik ({{cars}} autó).",
       "cancel": "Megszakítás",
-      "cancelled": "Az importálás megszakítva."
+      "cancelled": "Az importálás megszakítva.",
+      "restoreRunning": "{{name}} {{time}} óta futó visszaállítása ({{cars}} autó, {{done}}/{{total}} bejegyzés).",
+      "restoreWaiting": "{{name}} {{time}} óta váró visszaállítása ({{cars}} autó).",
+      "restoreCancelled": "A visszaállítás megszakítva."
     }
   },
   "errors": {
@@ -989,7 +1002,8 @@
       "replaceNothing": "A mentésben nincs ilyen fajta adat, így nincs mire cserélni a tiédet.",
       "tooManyChoices": "Túl sok bejegyzést választottál ki egyenként. Használd a Mind bejelölése vagy a Jelölések törlése gombot, majd módosítsd azt a néhányat, amelyik eltér.",
       "unknownKind": "Nincs ilyen fajta bejegyzés.",
-      "photoMissing": "A mentésben nincs fájl ehhez a képhez."
+      "photoMissing": "A mentésben nincs fájl ehhez a képhez.",
+      "carInTrash": "A(z) {{car}} itt a kukában van: előbb állítsd vissza a kukából, vagy ürítsd ki a kukát."
     },
     "chart": {
       "invalid": "Ez a grafikon nem érvényes.",
@@ -1183,6 +1197,9 @@
       "monthInvalid": "A hónap 1 és 12 közötti szám.",
       "reminderMonthInvalid": "Az emlékeztető hónapja 1 és 12 közötti szám, vagy nincs.",
       "estimateSpan": "A becslés kezdőnapja a zárónapja előtt legyen, és ne a jövőben."
+    },
+    "restore": {
+      "alreadyRunning": "Már fut vagy vár egy visszaállításod."
     }
   },
   "a11y": {
@@ -1704,6 +1721,131 @@
       "ownDashboardName": "A saját irányítópultom",
       "ownDashboardRow": "Ha bejelölöd, a mentésé lecseréli az autóhoz tartozó saját irányítópultodat.",
       "ownDashboardKept": "A(z) {{target}} autóhoz van saját irányítópultod; a mentését nem vesszük át."
+    }
+  },
+  "restore": {
+    "action": "Autók visszaállítása…",
+    "title": "Autók visszaállítása a(z) {{date}}-i mentésből",
+    "pageTitle": "Autók visszaállítása",
+    "steps": {
+      "key": "Kulcs",
+      "cars": "Autók",
+      "review": "Áttekintés",
+      "done": "Kész"
+    },
+    "key": {
+      "intro": "Ez a mentés titkosított: add meg a jelmondatát vagy az identitását.",
+      "open": "Mentés megnyitása",
+      "opening": "A mentés megnyitása…",
+      "failed": "A mentést nem sikerült megnyitni.",
+      "notFound": "Előbb válassz egy mentést a Mentések oldalon.",
+      "toBackups": "Ugrás a Mentésekhez"
+    },
+    "cars": {
+      "count_one": "{{count}} autó · {{picked}} kiválasztva",
+      "count_other": "{{count}} autó · {{picked}} kiválasztva",
+      "search": "Keresés név vagy rendszám szerint",
+      "owner": "Tulajdonos",
+      "everyone": "Mindenki",
+      "ownerOf": "{{name}} autója",
+      "here": "Még megvan.",
+      "missing": "Csak a hiányzó kerül vissza: {{list}}.",
+      "nothingMissing": "Semmi sem hiányzik.",
+      "sharingStays": "A megosztása marad, ahogy ma van.",
+      "gone": "Már nincs meg.",
+      "comesBack": "A bejegyzéseivel, tulajdonosával és megosztásával együtt tér vissza ({{grants}}).",
+      "grants_one": "{{count}} személlyel megosztva",
+      "grants_other": "{{count}} személlyel megosztva",
+      "notShared": "nincs megosztva",
+      "ownerGone": "A tulajdonosának, {{name}}, már nincs fiókja.",
+      "whoGets": "Kié legyen ez az autó?",
+      "you": "Te ({{name}})",
+      "sameEmail": "azonos e-mail",
+      "inTrash": "Itt a kukában van: előbb állítsd vissza a kukából, vagy ürítsd ki a kukát.",
+      "tyreSets_one": "{{count}} gumiszett",
+      "tyreSets_other": "{{count}} gumiszett",
+      "none": "Válassz legalább egy autót.",
+      "noMatch": "Egy autó sem felel meg.",
+      "previous": "Előző oldal",
+      "next": "Következő oldal",
+      "page": "{{page}}. oldal / {{pages}}",
+      "back": "Vissza",
+      "review": "Áttekintés"
+    },
+    "review": {
+      "missing": "{{list}} hiányzik, és visszakerül a saját azonosítójával, azzal, aki rögzítette.",
+      "whole": "Egészében visszakerül {{owner}} tulajdonába: {{list}}, a saját azonosítójukkal, azzal, aki rögzítette.",
+      "stays": "{{owner}} autója marad.",
+      "access": "{{names}} hozzáférése visszatér.",
+      "goneAccess": "{{names}} is hozzáfért, de már nincs fiókja.",
+      "sharingStays": "A megosztása marad, ahogy ma van.",
+      "refused": "A mai szabályok szerint el nem fogadott bejegyzések kimaradnak, és a jelentésben szerepelnek.",
+      "told": "{{names}} és mindenki, akivel az autóik meg vannak osztva, utána értesítést kap.",
+      "start_one": "{{count}} autó visszaállítása",
+      "start_other": "{{count}} autó visszaállítása"
+    },
+    "report": {
+      "again": "Újra {{owner}} autója.",
+      "access_one": "{{count}} személy hozzáférése tért vissza.",
+      "access_other": "{{count}} személy hozzáférése tért vissza.",
+      "goneAccess": "{{names}} is hozzáfért, de már nincs fiókja.",
+      "peopleLeftOut_one": "{{count}} saját diagram vagy irányítópult kimaradt: a gazdájának nincs itt fiókja, vagy nem látja az autót.",
+      "peopleLeftOut_other": "{{count}} saját diagram vagy irányítópult kimaradt: a gazdájuknak nincs itt fiókja, vagy nem látja az autót."
+    },
+    "tyres": {
+      "inTrash": "Itt a kukában van: ott marad."
+    },
+    "kinds": {
+      "open": "Válaszd ki, mi kerüljön vissza",
+      "closedHint": "Csak a hiányzó kerül vissza.",
+      "modes": {
+        "DONT_IMPORT": "Ne kerüljön vissza"
+      },
+      "confirm": {
+        "title": "Törlöd és lecseréled {{owner}} {{car}} autójában?",
+        "titleOf": "Törlöd és lecseréled {{owner}} {{car}} autójában? · {{n}}/{{count}}",
+        "text": "A(z) {{car}} tulajdonosa {{owner}}. A jelenlegi {{list}} véglegesen törlődik, és a mentés adatai kerülnek a helyére.",
+        "undone": "Ez nem vonható vissza, és a kukába sem kerül. {{owner}} és mindenki, akivel az autó meg van osztva, értesítést kap.",
+        "confirm": "Törlés és visszaállítás"
+      }
+    },
+    "plan": {
+      "policyRest": "A többi visszaállítása",
+      "inTrash_one": "{{count}} bejegyzés a(z) {{target}} kukájában van, és nem kerül vissza; ha kell, ott állítsd vissza.",
+      "inTrash_other": "{{count}} bejegyzés a(z) {{target}} kukájában van, és nem kerül vissza; ha kellenek, ott állítsd vissza."
+    },
+    "run": {
+      "running": "Visszaállítás… {{car}}/{{cars}}. autó · {{done}}/{{total}} bejegyzés",
+      "cancel": "Visszaállítás megszakítása",
+      "cancelTitle": "Megszakítod a visszaállítást?",
+      "cancelText": "Semmi nem kerül vissza.",
+      "keep": "Visszaállítás folytatása",
+      "waiting_one": "Vár, amíg egy másik importálás vagy visszaállítás befejeződik (előtted: {{count}}). A tiéd magától indul.",
+      "waiting_other": "Vár, amíg más importálások vagy visszaállítások befejeződnek (előtted: {{count}}). A tiéd magától indul.",
+      "finished_one": "A visszaállítás elkészült: {{count}} autó.",
+      "finished_other": "A visszaállítás elkészült: {{count}} autó.",
+      "imported": "Visszakerült {{fuel}} tankolás, {{expenses}} kiadás és {{recurring}} rendszeres kiadás.",
+      "nothing": "Semmi nem került vissza: az autók olyanok, amilyenek voltak.",
+      "failure": {
+        "CANCELLED": "A visszaállítást megszakították.",
+        "TIMED_OUT": "A visszaállítás tovább tartott, mint amit a szerver enged ({{minutes}} perc), ezért leállt.",
+        "INTERRUPTED": "A visszaállítás nem fejeződött be: a szerver újraindult közben.",
+        "DID_NOT_START": "A visszaállításod nem indult el: egy másik futás túl sokáig tartott. Semmi nem került vissza.",
+        "FAILED": "A visszaállítás nem fejeződött be: váratlan hiba történt a szerveren."
+      },
+      "another": "Más autók visszaállítása",
+      "gone": "Ennek a visszaállításnak a jelentését már nem őrizzük."
+    },
+    "media": {
+      "charts_one": "{{count}} diagram új; {{same}} már megvan. A saját diagramok azokhoz kerülnek vissza, akik látják az autót.",
+      "charts_other": "{{count}} diagram új; {{same}} már megvan. A saját diagramok azokhoz kerülnek vissza, akik látják az autót.",
+      "importedPhotos_one": "Visszakerült {{count}} fotó.",
+      "importedPhotos_other": "Visszakerült {{count}} fotó.",
+      "importedPicture": "Visszakerült az autó képe.",
+      "importedCharts_one": "Visszakerült {{count}} diagram.",
+      "importedCharts_other": "Visszakerült {{count}} diagram.",
+      "importedDashboard": "Visszakerült az irányítópult.",
+      "importedOwnDashboard": "Visszakerültek a saját irányítópultok."
     }
   },
   "welcome": {

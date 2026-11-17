@@ -141,7 +141,16 @@
       "IMPORT_NOT_FINISHED": "Your import did not finish: nothing was imported.",
       "IMPORT_CANCELLED": "{{actor}} cancelled your import: nothing was imported.",
       "CARS_IMPORTED_one": "{{actor}} imported {{count}} car from a backup: {{names}}.",
-      "CARS_IMPORTED_other": "{{actor}} imported {{count}} cars from a backup: {{names}}."
+      "CARS_IMPORTED_other": "{{actor}} imported {{count}} cars from a backup: {{names}}.",
+      "RESTORE_FINISHED_one": "Your restore finished: {{count}} car ({{names}}). {{refused}} entries could not be saved.",
+      "RESTORE_FINISHED_other": "Your restore finished: {{count}} cars ({{names}}). {{refused}} entries could not be saved.",
+      "RESTORE_NOT_FINISHED": "Your restore did not finish: nothing was restored.",
+      "RESTORE_CANCELLED": "{{actor}} cancelled your restore: nothing was restored.",
+      "CARS_RESTORED_one": "{{actor}} restored {{count}} car from the backup of {{date}}: {{names}}.",
+      "CARS_RESTORED_other": "{{actor}} restored {{count}} cars from the backup of {{date}}: {{names}}.",
+      "CAR_RESTORED_back": "{{actor}} restored {{car}} from the backup of {{date}}: {{count}} entries came back.",
+      "CAR_RESTORED_replaced": "{{actor}} restored {{car}} from the backup of {{date}}: {{count}} {{kind}} were replaced by the backup's.",
+      "CAR_RESTORED_again": "{{actor}} restored {{car}} from the backup of {{date}}. It is yours again."
     }
   },
   "status": {
@@ -816,7 +825,8 @@
         "environmentOlder": "Not recorded: an older release wrote it."
       },
       "releaseHold": "Release",
-      "releaseHoldAria": "Release the backup of {{made}} ({{file}})"
+      "releaseHoldAria": "Release the backup of {{made}} ({{file}})",
+      "restoreCarsAria": "Restore cars from the backup of {{made}} ({{file}})"
     },
     "imports": {
       "title": "Imports",
@@ -824,7 +834,10 @@
       "running": "An import started by {{name}} has been running since {{time}} ({{cars}} cars, {{done}} of {{total}} entries).",
       "waiting": "An import started by {{name}} has been waiting since {{time}} ({{cars}} cars).",
       "cancel": "Cancel it",
-      "cancelled": "The import was cancelled."
+      "cancelled": "The import was cancelled.",
+      "restoreRunning": "A restore started by {{name}} has been running since {{time}} ({{cars}} cars, {{done}} of {{total}} entries).",
+      "restoreWaiting": "A restore started by {{name}} has been waiting since {{time}} ({{cars}} cars).",
+      "restoreCancelled": "The restore was cancelled."
     }
   },
   "errors": {
@@ -989,7 +1002,8 @@
       "replaceNothing": "The backup has none of this kind, so there is nothing to replace yours with.",
       "tooManyChoices": "Too many entries were chosen one by one. Use Tick all or Untick all, then change the few that differ.",
       "unknownKind": "There is no such kind of entry.",
-      "photoMissing": "The backup has no file for this picture."
+      "photoMissing": "The backup has no file for this picture.",
+      "carInTrash": "{{car}} is in the trash here: restore it from the trash or empty the trash first."
     },
     "chart": {
       "invalid": "This chart is not valid.",
@@ -1183,6 +1197,9 @@
       "monthInvalid": "A month is a number from 1 to 12.",
       "reminderMonthInvalid": "The month to be reminded from is a number from 1 to 12, or none.",
       "estimateSpan": "The day the estimate starts must be before the day it ends, and not in the future."
+    },
+    "restore": {
+      "alreadyRunning": "A restore of yours is running or waiting already."
     }
   },
   "a11y": {
@@ -1704,6 +1721,131 @@
       "ownDashboardName": "My own dashboard",
       "ownDashboardRow": "Ticked, the backup's replaces your own dashboard of this car.",
       "ownDashboardKept": "You have your own dashboard of {{target}}; the backup's is not taken."
+    }
+  },
+  "restore": {
+    "action": "Restore cars…",
+    "title": "Restore cars from the backup of {{date}}",
+    "pageTitle": "Restore cars",
+    "steps": {
+      "key": "Key",
+      "cars": "Cars",
+      "review": "Review",
+      "done": "Done"
+    },
+    "key": {
+      "intro": "This backup is encrypted: give its passphrase or its identity.",
+      "open": "Open the backup",
+      "opening": "Opening the backup…",
+      "failed": "The backup could not be opened.",
+      "notFound": "Choose a backup on the Backups page first.",
+      "toBackups": "Go to Backups"
+    },
+    "cars": {
+      "count_one": "{{count}} car · {{picked}} picked",
+      "count_other": "{{count}} cars · {{picked}} picked",
+      "search": "Search by name or plate",
+      "owner": "Owner",
+      "everyone": "Everyone",
+      "ownerOf": "{{name}}'s",
+      "here": "Still here.",
+      "missing": "Only what is missing is added: {{list}}.",
+      "nothingMissing": "Nothing is missing.",
+      "sharingStays": "Its sharing stays as it is today.",
+      "gone": "Not here any more.",
+      "comesBack": "It comes back with its entries, owner and sharing ({{grants}}).",
+      "grants_one": "shared with {{count}} person",
+      "grants_other": "shared with {{count}} people",
+      "notShared": "not shared",
+      "ownerGone": "Its owner, {{name}}, no longer has an account.",
+      "whoGets": "Who gets this car?",
+      "you": "You ({{name}})",
+      "sameEmail": "same e-mail",
+      "inTrash": "In the trash here: restore it from the trash or empty the trash first.",
+      "tyreSets_one": "{{count}} tyre set",
+      "tyreSets_other": "{{count}} tyre sets",
+      "none": "Pick at least one car.",
+      "noMatch": "No car matches.",
+      "previous": "Previous page",
+      "next": "Next page",
+      "page": "Page {{page}} of {{pages}}",
+      "back": "Back",
+      "review": "Review"
+    },
+    "review": {
+      "missing": "{{list}} are missing and come back, under their own ids, logged by who logged them.",
+      "whole": "It comes back whole to {{owner}}: {{list}}, under their own ids, logged by who logged them.",
+      "stays": "It stays {{owner}}'s.",
+      "access": "Access comes back for {{names}}.",
+      "goneAccess": "{{names}} had access too but no longer has an account.",
+      "sharingStays": "Its sharing stays as it is today.",
+      "refused": "Entries today's rules refuse are left out and listed in the report.",
+      "told": "{{names}} and everyone their cars are shared with are told afterwards.",
+      "start_one": "Restore {{count}} car",
+      "start_other": "Restore {{count}} cars"
+    },
+    "report": {
+      "again": "It is {{owner}}'s again.",
+      "access_one": "Access came back for {{count}} person.",
+      "access_other": "Access came back for {{count}} people.",
+      "goneAccess": "{{names}} had access but no longer has an account.",
+      "peopleLeftOut_one": "{{count}} private chart or own dashboard stayed out: its person has no account here or cannot see the car.",
+      "peopleLeftOut_other": "{{count}} private charts or own dashboards stayed out: their people have no account here or cannot see the car."
+    },
+    "tyres": {
+      "inTrash": "In the trash here: it stays there."
+    },
+    "kinds": {
+      "open": "Choose what to restore",
+      "closedHint": "Only what is missing comes back.",
+      "modes": {
+        "DONT_IMPORT": "Don't restore"
+      },
+      "confirm": {
+        "title": "Delete and replace in {{owner}}'s {{car}}?",
+        "titleOf": "Delete and replace in {{owner}}'s {{car}}? · {{n}} of {{count}}",
+        "text": "{{car}} belongs to {{owner}}. Its current {{list}} are deleted for good and replaced by the backup's.",
+        "undone": "This cannot be undone, and they will not be in the trash. {{owner}} and everyone the car is shared with are told.",
+        "confirm": "Delete and restore"
+      }
+    },
+    "plan": {
+      "policyRest": "Restore the rest",
+      "inTrash_one": "{{count}} entry is in {{target}}'s trash and is not restored; restore it there if you want it.",
+      "inTrash_other": "{{count}} entries are in {{target}}'s trash and are not restored; restore them there if you want them."
+    },
+    "run": {
+      "running": "Restoring… car {{car}} of {{cars}} · {{done}} of {{total}} entries",
+      "cancel": "Cancel the restore",
+      "cancelTitle": "Cancel the restore?",
+      "cancelText": "Nothing will be restored.",
+      "keep": "Keep restoring",
+      "waiting_one": "Waiting for another import or restore to finish ({{count}} ahead of you). Yours starts by itself.",
+      "waiting_other": "Waiting for other imports or restores to finish ({{count}} ahead of you). Yours starts by itself.",
+      "finished_one": "Restore finished: {{count}} car.",
+      "finished_other": "Restore finished: {{count}} cars.",
+      "imported": "Brought back {{fuel}} refuellings, {{expenses}} expenses and {{recurring}} recurring expenses.",
+      "nothing": "Nothing was restored: the cars are as they were.",
+      "failure": {
+        "CANCELLED": "The restore was cancelled.",
+        "TIMED_OUT": "The restore took longer than the server allows ({{minutes}} minutes) and was stopped.",
+        "INTERRUPTED": "The restore did not finish: the server restarted while it ran.",
+        "DID_NOT_START": "Your restore did not start: another run took too long. Nothing was restored.",
+        "FAILED": "The restore did not finish: something unexpected happened on the server."
+      },
+      "another": "Restore other cars",
+      "gone": "This restore's report is no longer kept."
+    },
+    "media": {
+      "charts_one": "{{count}} chart is new; {{same}} are already here. Private ones come back to the people who can see the car.",
+      "charts_other": "{{count}} charts are new; {{same}} are already here. Private ones come back to the people who can see the car.",
+      "importedPhotos_one": "Brought back {{count}} photo.",
+      "importedPhotos_other": "Brought back {{count}} photos.",
+      "importedPicture": "Brought back the car's picture.",
+      "importedCharts_one": "Brought back {{count}} chart.",
+      "importedCharts_other": "Brought back {{count}} charts.",
+      "importedDashboard": "Brought back the dashboard.",
+      "importedOwnDashboard": "Brought back people's own dashboards."
     }
   },
   "welcome": {

@@ -1,5 +1,5 @@
-import { useTranslation } from 'react-i18next'
 import type { BackupImportReviewQuery, ImportKindMode } from '../../gql/generated.ts'
+import { useImportTranslation } from './importMode.ts'
 
 /** The kinds of a car's entries a choice is made for (#338), as the server names them. */
 export type Kind = 'refueling' | 'expense' | 'recurring'
@@ -74,7 +74,7 @@ export function kindsInput(kinds: Kinds, asNew: boolean) {
 
 /** Why *Replace all* cannot be chosen for a kind (the owner's decisions 2 and 4), in words; null when it can. */
 export function useHeldBack() {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   return (kind: Kind, review: KindReview): string | null => {
     // Photos hold nothing back since #339 (they come back with their entries; the confirmation counts the ones that do not).
     if (review.onTyreLines > 0) return t('import.kinds.expense.heldLines', { lines: review.onTyreLines })
@@ -85,7 +85,7 @@ export function useHeldBack() {
 
 /** What a kind's choice does, in one line (the Cars step and the confirmation use the same words). */
 export function useKindLine() {
-  const { t } = useTranslation()
+  const { t } = useImportTranslation()
   return (kind: Kind, choice: KindChoice, review: KindReview, car: string): string => {
     if (choice.mode === 'DONT_IMPORT') return t(`import.kinds.${kind}.none`)
     if (choice.mode === 'REPLACE_ALL')
