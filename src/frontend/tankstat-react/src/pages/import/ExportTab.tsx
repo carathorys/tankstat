@@ -5,7 +5,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Download } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loading } from '../../components/Loading.tsx'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
@@ -30,12 +30,12 @@ export function ExportTab() {
   const file = mine.data?.myExport ?? null
   // Asked again while it is built, never otherwise.
   const building = file?.state === 'BUILDING'
-  const [polling, setPolling] = useState(false)
-  if (building !== polling) {
-    setPolling(building)
-    if (building) mine.startPolling(EXPORT_POLL_MS)
-    else mine.stopPolling()
-  }
+  const { startPolling, stopPolling } = mine
+  useEffect(() => {
+    if (!building) return
+    startPolling(EXPORT_POLL_MS)
+    return stopPolling
+  }, [building, startPolling, stopPolling])
   const [again, setAgain] = useState(false)
 
   if (mine.error || cars.error) return <ErrorMessage error={mine.error ?? cars.error} />
