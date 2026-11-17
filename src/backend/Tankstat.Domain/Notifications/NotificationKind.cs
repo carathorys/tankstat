@@ -43,6 +43,42 @@ public enum NotificationKind
 
     /// <summary>A tyre set in storage on a vehicle the recipient can see has reached the month it is to be fitted from (#292); one per set and season.</summary>
     TyreSwapDue,
+
+    /// <summary>To the person who started it: their import from a backup finished (#337); the report is kept for a week.</summary>
+    ImportFinished,
+
+    /// <summary>To the person who started it: their import brought nothing in (it failed, took too long, never got its turn, or the server restarted).</summary>
+    ImportNotFinished,
+
+    /// <summary>To the person who started it: someone else (an administrator) cancelled their import.</summary>
+    ImportCancelled,
+
+    /// <summary>To every administrator: a user imported cars from a backup.</summary>
+    CarsImported,
+
+    /// <summary>To the administrator who started it: their partial restore finished (#340); the report is kept for a week.</summary>
+    RestoreFinished,
+
+    /// <summary>To the administrator who started it: their restore brought nothing back.</summary>
+    RestoreNotFinished,
+
+    /// <summary>To the administrator who started it: another administrator cancelled their restore.</summary>
+    RestoreCancelled,
+
+    /// <summary>To the other administrators: an administrator restored cars from a backup.</summary>
+    CarsRestored,
+
+    /// <summary>To a restored car's owner and everyone it is shared with: what came back (#340, one per car).</summary>
+    CarRestored,
+
+    /// <summary>To the person who started it: their export is ready to download (#341), kept for <c>Exports:KeepHours</c>.</summary>
+    ExportReady,
+
+    /// <summary>To the person who started it: their export could not be built; nothing was kept.</summary>
+    ExportFailed,
+
+    /// <summary>To every administrator: a user exported cars (the owner's decision 3 on #341).</summary>
+    CarsExported,
 }
 
 /// <summary>
@@ -62,6 +98,7 @@ public enum NotificationTopic
     Digest,
     Backup,
     Tyres,
+    Imports,
 }
 
 public static class NotificationKinds
@@ -79,6 +116,9 @@ public static class NotificationKinds
         NotificationKind.MoreActivity => NotificationTopic.Digest,
         NotificationKind.BackupFailed => NotificationTopic.Backup,
         NotificationKind.TyreSwapDue => NotificationTopic.Tyres,
+        NotificationKind.ImportFinished or NotificationKind.ImportNotFinished or NotificationKind.ImportCancelled or NotificationKind.CarsImported
+            or NotificationKind.RestoreFinished or NotificationKind.RestoreNotFinished or NotificationKind.RestoreCancelled or NotificationKind.CarsRestored
+            or NotificationKind.CarRestored or NotificationKind.ExportReady or NotificationKind.ExportFailed or NotificationKind.CarsExported => NotificationTopic.Imports,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

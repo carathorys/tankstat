@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Vehicles;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Charts;
@@ -33,17 +34,24 @@ public sealed class DashboardService(IVehicleRepository vehicles, IDashboardLayo
     /// names is kept only when it is one of the vehicle's charts its audience sees: a shared one for the vehicle's layout, a shared one or
     /// the user's own for theirs. Anything else (deleted meanwhile, another vehicle's, someone's private chart) is dropped, not refused.
     /// </summary>
-    public async Task SaveAsync(Guid vehicleId, bool personal, DashboardLayoutValues values, CancellationToken ct)
+    /// <param name="forUserId">A partial restore's (#340, <see cref="RunRestore"/>): the person whose own dashboard it is, as their charts are.</param>
+    public async Task SaveAsync(Guid vehicleId, bool personal, DashboardLayoutValues values, CancellationToken ct, Guid? forUserId = null)
     {
         var user = await RequireMayChangeAsync(vehicleId, personal, ct);
-        var visible = await charts.ListVisibleAsync(vehicleId, user.Id, ct); // shared, plus the user's own
+        var owner = user.Id;
+        if (forUserId is { } other)
+        {
+            RunRestore.Require(user);
+            owner = other;
+        }
+        var visible = await charts.ListVisibleAsync(vehicleId, owner, ct); // shared, plus the user's own
         var allowed = visible.Where(c => personal || c.IsShared).Select(c => c.Id).ToHashSet();
         bool Keep(string entry) => DashboardLayoutValues.ChartIdOf(entry) is not { } id || allowed.Contains(id);
         // The shape is checked once, by Create: anything out of shape is refused there, before anything is saved.
         var kept = values with { Tiles = (values.Tiles ?? []).Where(t => t is null || Keep(t.Id)).ToList(), Hidden = (values.Hidden ?? []).Where(e => e is null || Keep(e)).ToList() };
 
         var now = clock.GetUtcNow();
-        if (personal) await layouts.SavePersonalAsync(UserDashboardLayout.Create(user.Id, vehicleId, kept, now), ct);
+        if (personal) await layouts.SavePersonalAsync(UserDashboardLayout.Create(owner, vehicleId, kept, now), ct);
         else await layouts.SaveSharedAsync(VehicleDashboardLayout.Create(vehicleId, kept, now), ct);
         logger.LogDebug("User {UserId} saved the {Scope} dashboard of vehicle {VehicleId}", user.Id, personal ? "personal" : "shared", vehicleId);
     }
@@ -70,6 +78,7 @@ public sealed class DashboardService(IVehicleRepository vehicles, IDashboardLayo
         if (level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
         if (!personal && level < AccessLevel.Edit)
             throw new ForbiddenException("dashboard.needEditToChange", "You need edit access to the vehicle's logs to change its dashboard.");
+        await access.WaitForRunsAsync(vehicleId, ct); // a run (#335) may bring the car's charts and dashboard
         return user;
     }
 }

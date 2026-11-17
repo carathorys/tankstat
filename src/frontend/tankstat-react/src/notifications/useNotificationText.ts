@@ -33,7 +33,7 @@ export interface NotificationText {
  */
 export function useNotificationText() {
   const { t } = useTranslation()
-  const { date, dateTime, list } = useFormat()
+  const { bytes, date, dateTime, list } = useFormat()
   const keyText = useKeyText()
 
   return (n: NotificationFieldsFragment): NotificationText => {
@@ -91,6 +91,48 @@ export function useNotificationText() {
         const reason = keyText(args.error, parseArgs(args.errorArgs)) ?? args.error ?? ''
         return { text: t('notifications.kinds.BACKUP_FAILED', { time: args.startedAt ? dateTime(args.startedAt) : '', reason }), href: '/admin/backups' }
       }
+      case 'IMPORT_FINISHED':
+        // An import from a backup (#337): how much came in; its report is kept for a week behind the link.
+        return { text: t('notifications.kinds.IMPORT_FINISHED', { count: Number(args.count ?? 0), names: args.names ?? '', refused: args.refused ?? '0' }), href: `/import?run=${n.subject.id}` }
+      case 'IMPORT_NOT_FINISHED':
+        return { text: t('notifications.kinds.IMPORT_NOT_FINISHED'), href: `/import?run=${n.subject.id}` }
+      case 'IMPORT_CANCELLED':
+        return { text: t('notifications.kinds.IMPORT_CANCELLED', { actor: args.actor ?? '' }), href: `/import?run=${n.subject.id}` }
+      // A partial restore (#340): the administrator's own, its report behind the link; the others' and each car's owner's and sharers'.
+      case 'RESTORE_FINISHED':
+        return { text: t('notifications.kinds.RESTORE_FINISHED', { count: Number(args.count ?? 0), names: args.names ?? '', refused: args.refused ?? '0' }), href: `/admin/backups/restore?run=${n.subject.id}` }
+      case 'RESTORE_NOT_FINISHED':
+        return { text: t('notifications.kinds.RESTORE_NOT_FINISHED'), href: `/admin/backups/restore?run=${n.subject.id}` }
+      case 'RESTORE_CANCELLED':
+        return { text: t('notifications.kinds.RESTORE_CANCELLED', { actor: args.actor ?? '' }), href: `/admin/backups/restore?run=${n.subject.id}` }
+      case 'CARS_RESTORED':
+        return { text: t('notifications.kinds.CARS_RESTORED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '', date: args.date ? date(args.date) : '' }), href: null }
+      case 'CAR_RESTORED': {
+        const how = args.how === 'replaced' ? 'replaced' : args.how === 'again' ? 'again' : args.how === 'changed' ? 'changed' : 'back'
+        const kinds = (args.kinds ?? '').split(',').filter((k): k is 'refueling' | 'expense' | 'recurring' => k === 'refueling' || k === 'expense' || k === 'recurring')
+        return {
+          text: t(`notifications.kinds.CAR_RESTORED_${how}`, {
+            actor: args.actor ?? '',
+            car: args.vehicleName ?? '',
+            date: args.date ? date(args.date) : '',
+            count: Number(args.count ?? 0),
+            kind: list(kinds.map((k) => t(`import.kinds.${k}.name`).toLocaleLowerCase())),
+          }),
+          href: `/vehicles/${n.subject.id}`,
+        }
+      }
+      // An export of the person's cars (#341): theirs on the Export tab while it is kept; the administrators are only told.
+      case 'EXPORT_READY':
+        return {
+          text: t('notifications.kinds.EXPORT_READY', { count: Number(args.count ?? 0), size: bytes(Number(args.bytes ?? 0)), time: args.keptUntil ? dateTime(args.keptUntil) : '' }),
+          href: '/import?tab=export',
+        }
+      case 'EXPORT_FAILED':
+        return { text: t('notifications.kinds.EXPORT_FAILED'), href: '/import?tab=export' }
+      case 'CARS_EXPORTED':
+        return { text: t('notifications.kinds.CARS_EXPORTED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '' }), href: null }
+      case 'CARS_IMPORTED':
+        return { text: t('notifications.kinds.CARS_IMPORTED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '' }), href: null }
       default:
         // A kind this release does not know: a newer server's, while this tab waits for its update. Said plainly, never a broken list.
         return { text: t('notifications.unknownKind'), href: null }

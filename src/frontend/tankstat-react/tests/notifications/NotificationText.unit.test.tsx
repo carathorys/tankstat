@@ -109,6 +109,49 @@ it('tells the administrators which backup failed and why, and leads to the Backu
   expect(say('BACKUP_FAILED', { error: 'backup.somethingNew', startedAt }).text).toBe(`The backup of ${when} failed: backup.somethingNew`)
 })
 
+it('words an import from a backup for its starter and for the administrators, and leads to its report', () => {
+  const run = { subject: { type: 'IMPORT_RUN' as const, id: 'run1' }, context: null }
+  expect(say('IMPORT_FINISHED', { count: '2', names: 'Octavia, Fabia', refused: '3' }, run)).toEqual({
+    text: 'Your import finished: 2 cars (Octavia, Fabia). 3 entries could not be saved.',
+    href: '/import?run=run1',
+  })
+  expect(say('IMPORT_FINISHED', { count: '1', names: 'Octavia', refused: '0' }, run).text).toBe('Your import finished: 1 car (Octavia). 0 entries could not be saved.')
+  expect(say('IMPORT_NOT_FINISHED', { reason: 'TimedOut' }, run)).toEqual({ text: 'Your import did not finish: nothing was imported.', href: '/import?run=run1' })
+  expect(say('IMPORT_CANCELLED', { actor: 'Root' }, run).text).toBe('Root cancelled your import: nothing was imported.')
+  expect(say('CARS_IMPORTED', { actor: 'Bob', count: '2', names: 'Octavia, Fabia' }, run)).toEqual({ text: 'Bob imported 2 cars from a backup: Octavia, Fabia.', href: null })
+})
+
+it('words an export for the person who made it, and for the administrators (#341)', () => {
+  const export_ = { subject: { type: 'EXPORT' as const, id: 'e1' }, context: null }
+  const ready = say('EXPORT_READY', { count: '2', bytes: '1500000', keptUntil: '2026-11-18T10:00:00Z' }, export_)
+  expect(ready.href).toBe('/import?tab=export')
+  expect(ready.text).toMatch(/^Your export is ready: 2 cars, 1\.5 MB\. It is kept until .+\.$/)
+  expect(say('EXPORT_READY', { count: '1', bytes: '900', keptUntil: '2026-11-18T10:00:00Z' }, export_).text).toMatch(/^Your export is ready: 1 car, 900 byte/)
+  expect(say('EXPORT_FAILED', { reason: 'export.failed' }, export_)).toEqual({ text: 'Your export could not be built. Nothing was kept.', href: '/import?tab=export' })
+  expect(say('CARS_EXPORTED', { actor: 'Anna', count: '1', names: 'Golf' }, export_)).toEqual({ text: 'Anna exported 1 car: Golf.', href: null })
+})
+
+it("words a partial restore for the administrator who ran it, the other administrators, and each car's owner and sharers (#340)", () => {
+  const run = { subject: { type: 'IMPORT_RUN' as const, id: 'run1' }, context: null }
+  expect(say('RESTORE_FINISHED', { count: '2', names: 'Golf, Polo', refused: '0' }, run)).toEqual({
+    text: 'Your restore finished: 2 cars (Golf, Polo). 0 entries could not be saved.',
+    href: '/admin/backups/restore?run=run1',
+  })
+  expect(say('RESTORE_NOT_FINISHED', { reason: 'Failed' }, run)).toEqual({ text: 'Your restore did not finish: nothing was restored.', href: '/admin/backups/restore?run=run1' })
+  expect(say('RESTORE_CANCELLED', { actor: 'Eve' }, run).text).toBe('Eve cancelled your restore: nothing was restored.')
+  expect(say('CARS_RESTORED', { actor: 'Ada', count: '2', names: 'Golf, Polo', date: '2026-11-03' }, run).text).toMatch(/^Ada restored 2 cars from the backup of .*2026.*: Golf, Polo\.$/)
+  const car = { subject: { type: 'VEHICLE' as const, id: 'golf' }, context: null }
+  const back = say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Golf', date: '2026-11-03', how: 'back', count: '3', kinds: '' }, car)
+  expect(back.href).toBe('/vehicles/golf')
+  expect(back.text).toMatch(/^Ada restored Golf from the backup of .*: 3 entries came back\.$/)
+  expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Golf', date: '2026-11-03', how: 'replaced', count: '2', kinds: 'refueling,expense' }, car).text).toMatch(
+    /: 2 refuellings and expenses were replaced by the backup's\.$/,
+  )
+  expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Polo', date: '2026-11-03', how: 'again', count: '1', kinds: '' }, car).text).toMatch(/^Ada restored Polo from the backup of .*\. It is yours again\.$/)
+  // Only a set, a chart, the picture or a dashboard came: said without a count.
+  expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Golf', date: '2026-11-03', how: 'changed', count: '0', kinds: '' }, car).text).toMatch(/^Ada restored Golf from the backup of [^:]*\.$/)
+})
+
 it('says plainly that something happened it cannot describe yet, without a link, instead of breaking the list', () => {
   // A kind of a newer server, while this tab still runs the release before it.
   expect(say('SOMETHING_NEWER' as NotificationKind, {}, { context: null })).toEqual({

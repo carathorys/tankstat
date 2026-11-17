@@ -7,7 +7,8 @@ import { Bell, Car, CloudUpload, DatabaseBackup, FileUp, House, LogOut, Settings
 import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
-import { type AuthMode, type SessionQuery } from '../gql/generated.ts'
+import { CanExportDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
+import { useQuery } from '@apollo/client/react'
 import { SignOutConfirm } from '../auth/SignOutConfirm.tsx'
 import { useSignOutFlow } from '../auth/useSignOut.ts'
 import { usePendingCount } from '../offline/outbox.ts'
@@ -19,6 +20,8 @@ import { navItemSx } from './navStyles.ts'
 /** The navigation links, shared by the docked sidebar and the phone drawer. `onNavigate` lets the drawer close itself. */
 export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: SessionQuery['session']['user']; onNavigate?: () => void }) {
   const { t } = useTranslation()
+  // Import and export once exporting is the person's (#341); while it is off for them, or out of reach, the entry stays Import.
+  const canExport = useQuery(CanExportDocument, { skip: user === null && mode !== 'NONE' }).data?.canExport === true
   // Signing out works with the server out of reach too, and asks first when it would delete changes that only this device holds (#162).
   const signOut = useSignOutFlow(mode, onNavigate)
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
@@ -37,7 +40,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   return (
     <Stack component="nav" aria-label={t('nav.main')} sx={{ gap: 0.5 }}>
       {link('/', t('nav.home'), <House size={18} aria-hidden />)}
-      {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
+      {link('/import', canExport ? t('nav.importExport') : t('nav.import'), <FileUp size={18} aria-hidden />)}
       {link('/notifications', t('nav.notifications'), <Bell size={18} aria-hidden />)}
       {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
       {(waiting > 0 || parked > 0 || found > 0) && (

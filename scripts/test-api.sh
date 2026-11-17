@@ -25,7 +25,8 @@ export Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos"
 export Settings__Path="${files}/settings.json"
 # A backups folder of its own and no schedule or retention of the developer's: a start writes a missed backup and prunes the folder.
 export Backups__Path="${files}/backups"
-unset Backups__Every Backups__Days Backups__Keep Backups__KeepDays
+export Exports__Folder="${files}/exports"
+unset Backups__Every Backups__Days Backups__Keep Backups__KeepDays Exports__Enabled Exports__KeepHours
 # Nor a telemetry endpoint of the developer's (.NET reads the names in any case; matched as the sibling scripts do, since macOS's bash 3.2 has no ${name^^}).
 shopt -s nocasematch
 for name in $(compgen -e); do

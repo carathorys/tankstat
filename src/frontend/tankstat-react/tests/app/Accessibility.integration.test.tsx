@@ -265,6 +265,34 @@ it('the details tab with its trash button and confirmation is free of violations
   await check(document.body)
 })
 
+it('the Export tab with a car ticked and its kinds open is labelled and free of violations (#341)', async () => {
+  const offer = { __typename: 'ExportCarOfferInfo', id: 'v1', name: 'Octavia', licensePlate: null, refuelings: 2, expenses: 2, schedules: 1, tyreSets: 0, charts: 0, photos: 1, photoBytes: 300_000, pictureBytes: 0, rowBytes: 2000 }
+  const exporting = [
+    graphql.query('CanExport', () => HttpResponse.json({ data: { canExport: true } })),
+    graphql.query('ExportCars', () => HttpResponse.json({ data: { exportCars: [offer], exportPassphraseMinLength: 12 } })),
+    graphql.query('MyExport', () => HttpResponse.json({ data: { myExport: null } })),
+  ]
+  const { ui } = setup('/import?tab=export')
+  server.use(...exporting)
+  await ui.click(await screen.findByRole('checkbox', { name: 'Octavia' }))
+  await ui.click(screen.getByRole('button', { name: 'Choose what to export' }))
+  await check(document.body)
+})
+
+it('Export this car on the Details tab is a labelled, described dialog free of violations (#341)', async () => {
+  const offer = { __typename: 'ExportCarOfferInfo', id: 'v1', name: 'Octavia', licensePlate: null, refuelings: 2, expenses: 2, schedules: 1, tyreSets: 0, charts: 0, photos: 1, photoBytes: 300_000, pictureBytes: 0, rowBytes: 2000 }
+  const { ui } = setup('/vehicles/v1?tab=details')
+  server.use(
+    graphql.query('CanExport', () => HttpResponse.json({ data: { canExport: true } })),
+    graphql.query('ExportCars', () => HttpResponse.json({ data: { exportCars: [offer], exportPassphraseMinLength: 12 } })),
+    graphql.query('MyExport', () => HttpResponse.json({ data: { myExport: null } })),
+  )
+  await ui.click(await screen.findByRole('button', { name: 'Export this car' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Export Octavia' })
+  expect(dialog).toHaveAccessibleDescription(/A file of this car/)
+  await check(dialog)
+})
+
 it('the user administration dialogs are labelled, described and free of violations', async () => {
   const { ui } = setup('/admin/people')
   const table = await screen.findByRole('table')

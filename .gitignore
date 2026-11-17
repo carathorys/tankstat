@@ -554,3 +554,10 @@ tankstat-backup-*.zip.partial
 # ... and still never the Backups folders of the app's own code: a clone that ignores case (core.ignorecase, git's default on macOS and
 # Windows) matches them by the lines above (and Backup*/) too.
 !src/backend/*/Backups/
+
+# People's exports of their cars a local run of the app keeps (Exports:Folder default "exports" in the working directory, #341), and the
+# downloaded files: someone's cars, in plain unless they chose a passphrase, never in the repository.
+/exports/
+/src/backend/Tankstat.Api/exports/
+tankstat-export-*.zip
+src/frontend/tankstat-react/e2e/files/generated/

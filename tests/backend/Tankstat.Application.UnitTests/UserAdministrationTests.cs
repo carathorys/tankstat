@@ -189,10 +189,20 @@ public class UserAdministrationTests
         var (w, _) = SignedInAdmin();
         var alice = w.AddUser("alice@x.co");
         var token = w.ImportSessions.Save(alice.Id, new Imports.ImportBatch("fuelio", null, [], [], [], []));
+        var export = new Exports.ExportRecord(Guid.NewGuid(), alice.Id, Exports.ExportState.Ready, ["Golf"], false, DateTimeOffset.UnixEpoch);
+        var others = new Exports.ExportRecord(Guid.NewGuid(), Guid.NewGuid(), Exports.ExportState.Ready, ["Polo"], false, DateTimeOffset.UnixEpoch);
+        w.Exports.Save(export);
+        w.Exports.Save(others);
+        w.Exports.Files.UnionWith([export.Id, others.Id]);
 
         await w.UserService.DeleteAsync(alice.Id, null, null, default);
 
         Assert.Null(w.ImportSessions.Find(alice.Id, token));
+        Assert.Equal([alice.Id], w.BackupImports.EndedFor); // an uploaded backup of theirs still open (#336): its files go now
+        // Their export (#341) stops and goes, file and record; someone else's stays.
+        Assert.Equal([alice.Id], w.Exports.Forgotten);
+        Assert.Equal([others.Id], w.Exports.Saved.Keys);
+        Assert.Equal([others.Id], w.Exports.Files);
     }
 
     [Fact]

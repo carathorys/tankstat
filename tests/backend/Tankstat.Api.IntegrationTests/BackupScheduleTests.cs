@@ -80,6 +80,23 @@ public sealed class BackupScheduleTests : IDisposable
         Assert.Contains(app.Log.From<BackupRunner>(), e => e.Level == LogLevel.Information && e.Values.TryGetValue("File", out var f) && (string?)f == Name(At(10, 3)));
     }
 
+    /// <summary>The owner's decision 5 of #335: while a run holds SQLite's lock to write, the scheduled backup waits for its end.</summary>
+    [Fact]
+    public async Task WhileARunHoldsTheDatabase_TheDueBackupWaits_AndIsWrittenOnceTheRunEnded()
+    {
+        var runs = new Tankstat.Application.Runs.RunGateState();
+        runs.LockedOut(true);
+        using var app = App(new(), s => s.AddSingleton(runs));
+        var worker = Worker(app);
+
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        Assert.Empty(Files()); // the night's backup is due, and waits
+
+        runs.LockedOut(false);
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);
+        Assert.Equal([Name(At(10, 3))], Files());
+    }
+
     [Fact]
     public async Task WhileTheSetupWaits_NothingIsWritten_TheFirstDueTimeAfterItWritesTheFirstBackup()
     {

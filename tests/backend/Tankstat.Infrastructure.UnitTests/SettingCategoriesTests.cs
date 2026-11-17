@@ -45,7 +45,7 @@ public sealed partial class SettingCategoriesTests
     public void TheSectionsFound_AreEveryOneTheAppBinds()
     {
         Assert.Equal(
-            ["Auth", "Auth:Standalone", "Backups", "DataProtection", "Database", "Defaults", "Notifications", "Recognition", "Setup", "Smtp", "Storage", "Sync", "Telemetry"],
+            ["Auth", "Auth:Standalone", "Backups", "DataProtection", "Database", "Defaults", "Exports", "Imports", "Notifications", "Recognition", "Runs", "Setup", "Smtp", "Storage", "Sync", "Telemetry"],
             Sections.Select(s => s.Section).Order(StringComparer.Ordinal));
     }
 

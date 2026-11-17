@@ -131,6 +131,19 @@ public sealed class RecurringExpenseService(
         return await WithStatusAsync(item, ct);
     }
 
+    /// <summary>
+    /// Says an expense marked a schedule done, <b>without moving the schedule</b> (#338: a visit's link carried by an import, where the
+    /// schedule comes with its own <i>last done</i>). Both must be the same vehicle's, which the user may edit; a link that is there already
+    /// changes nothing (false).
+    /// </summary>
+    public async Task<bool> LinkAsync(Guid expenseId, Guid recurringExpenseId, CancellationToken ct)
+    {
+        var item = await EditableAsync(recurringExpenseId, ct);
+        if (await expenses.FindAsync(expenseId, ct) is not { } expense || expense.VehicleId != item.VehicleId)
+            throw new NotFoundException("expense.notFound", $"Expense {expenseId} does not exist.", new { Id = expenseId });
+        return await items.LinkAsync(expenseId, recurringExpenseId, ct);
+    }
+
     public async Task DeleteAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var item = await EditableAsync(id, ct);
@@ -154,7 +167,7 @@ public sealed class RecurringExpenseService(
 
         var vehicleId = found[0].VehicleId;
         var creator = await access.RequirePrincipalAsync(ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct), () => NotFound(found[0].Id));
+        await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct), () => NotFound(found[0].Id), ct);
         // Schedules of another vehicle look non-existent: one visit is one vehicle, and access was only checked for this one.
         if (found.FirstOrDefault(i => i.VehicleId != vehicleId) is { } stray) throw NotFound(stray.Id);
         // The visit was already recorded (its expense is linked to every schedule asked for): the same request again changes nothing, before
@@ -349,13 +362,13 @@ public sealed class RecurringExpenseService(
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
     private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct) =>
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
+        (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct)).Vehicle;
 
     private async Task<RecurringExpense> EditableAsync(Guid id, CancellationToken ct)
     {
         var item = await items.FindAsync(id, ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(item?.VehicleId, ct), () => NotFound(id));
+        await guard.RequireEditAsync(await guard.ForVehicleAsync(item?.VehicleId, ct), () => NotFound(id), ct);
         return item!;
     }
 }

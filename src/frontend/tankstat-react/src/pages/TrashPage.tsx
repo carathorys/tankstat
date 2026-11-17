@@ -196,7 +196,7 @@ function RefuelingTrash({ run, setNotice }: Shared) {
       { id: 'volume', label: 'columns.volume', include: 'withVolume', sortField: 'VOLUME', cell: (r) => (r.volume == null || !r.vehicle ? none : format.volume(r.volume, r.vehicle.units.volume)) },
       { id: 'cost', label: 'columns.cost', include: 'withCost', sortField: 'TOTAL_COST', cell: (r) => (r.totalCost == null || !r.currency ? none : format.money(r.totalCost, r.currency)) },
       { id: 'odometer', label: 'columns.odometer', include: 'withOdometer', sortField: 'ODOMETER', cell: (r) => (r.odometer == null || !r.vehicle ? none : format.distance(r.odometer, r.vehicle.units.distance)) },
-      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
+      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : r.createdByGone ? t('columns.createdByGone') : none) },
       { id: 'deletedAt', label: 'columns.deletedAt', include: 'withDeletedAt', mobile: true, sortField: 'DELETED_AT', cell: (r) => (r.deletedAt ? format.dateTime(r.deletedAt) : none) },
     ]
   }, [t, format])
@@ -244,7 +244,7 @@ function ExpenseTrash({ run, setNotice }: Shared) {
       { id: 'vehicle', label: 'columns.vehicle', sortField: 'VEHICLE', cell: (r) => r.vehicle?.name ?? none },
       { id: 'amount', label: 'columns.amount', include: 'withAmount', sortField: 'AMOUNT', cell: (r) => (r.amount == null || !r.currency ? none : format.money(r.amount, r.currency)) },
       { id: 'category', label: 'columns.category', include: 'withCategory', sortField: 'CATEGORY', cell: (r) => r.category ?? none },
-      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
+      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : r.createdByGone ? t('columns.createdByGone') : none) },
       { id: 'deletedAt', label: 'columns.deletedAt', include: 'withDeletedAt', mobile: true, sortField: 'DELETED_AT', cell: (r) => (r.deletedAt ? format.dateTime(r.deletedAt) : none) },
     ]
   }, [t, format])

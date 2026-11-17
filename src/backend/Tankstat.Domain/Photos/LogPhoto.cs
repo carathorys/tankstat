@@ -31,9 +31,10 @@ public sealed class LogPhoto : IOwned
     public Guid CreatedById { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static LogPhoto Create(Guid ownerId, Guid vehicleId, LogType logType, Guid logId, Guid imageId, Guid createdById, DateTimeOffset now)
+    /// <param name="id">The backup's id, kept by a partial restore (#340); else a new one.</param>
+    public static LogPhoto Create(Guid ownerId, Guid vehicleId, LogType logType, Guid logId, Guid imageId, Guid createdById, DateTimeOffset now, Guid? id = null)
     {
         if (!Enum.IsDefined(logType)) throw new DomainException("photo.unknownLogType", $"Unknown log type '{logType}'.", new { LogType = logType.ToString() });
-        return new LogPhoto { Id = Guid.NewGuid(), OwnerId = ownerId, VehicleId = vehicleId, LogType = logType, LogId = logId, ImageId = imageId, CreatedById = createdById, CreatedAt = now };
+        return new LogPhoto { Id = EntityId.OrNew(id), OwnerId = ownerId, VehicleId = vehicleId, LogType = logType, LogId = logId, ImageId = imageId, CreatedById = createdById, CreatedAt = now };
     }
 }

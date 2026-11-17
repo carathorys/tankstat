@@ -4,13 +4,16 @@ import { createdBy, isKept, keptPhotosOf, tyreNeedsOf, type Change } from './cha
 import { withoutTypename } from './conflicts.ts'
 import { connectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
-import { isConnectionFailure } from './errors.ts'
+import { isBusy, isConnectionFailure } from './errors.ts'
 import { keptPhotos } from './keptPhotos.ts'
 import { outbox } from './outbox.ts'
 import { BARE_ID, isTyreAction, sentInput } from './tyreChanges.ts'
 
 /** Changes per request (the server takes at most 200). */
 export const CHUNK_SIZE = 20
+
+/** How long after the server said it is busy with a run (#335) the changes are sent again. */
+export const BUSY_RETRY_MS = 60_000
 
 type Result = SyncChangesMutation['syncChanges']['results'][number]
 
@@ -36,6 +39,8 @@ export interface PushDeps {
   /** The download that follows a sync, so what was applied comes back from the server (ids, versions, what it worked out). */
   pull?: () => Promise<void>
   chunkSize?: number
+  /** After a busy answer (#335): how long until the changes are sent again. */
+  busyRetryMs?: number
 }
 
 /** What each mutation's input may carry: a form may hold more (a client id twice, values only the screen uses). */
@@ -181,7 +186,7 @@ export function withPhotosAlone(changes: readonly Change[]): Change[][] {
  * change sent again with what it did the first time). Then the download brings the server's rows, and only then do the kept changes
  * leave the screen, so nothing blinks in between. One run at a time.
  */
-export function createPushEngine({ client, device = deviceData, pull, chunkSize = CHUNK_SIZE }: PushDeps) {
+export function createPushEngine({ client, device = deviceData, pull, chunkSize = CHUNK_SIZE, busyRetryMs = BUSY_RETRY_MS }: PushDeps) {
   let state: PushState = { status: 'idle', last: null }
   const listeners = new Set<() => void>()
   const set = (next: Partial<PushState>) => {
@@ -189,6 +194,9 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     listeners.forEach((listener) => listener())
   }
   let running: Promise<void> | null = null
+  let retry: ReturnType<typeof setTimeout> | null = null
+  /** What ends the run: the server out of reach, or busy with a run of its own (#335). Either way everything waits as it is. */
+  const stops = (error: unknown) => isConnectionFailure(error) || isBusy(error)
   let again = false
 
   async function runOnce() {
@@ -199,6 +207,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     // Adds the server parked, in this run or an earlier one: what depends on them waits (sent, it could only fail).
     const blocked = new Set<string>(await parkedAdds(device))
     let interrupted = false
+    let busy = false
     let photosLeftOut = 0
     let photosWaiting = 0
 
@@ -213,7 +222,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
           if (id) drafts.set(key, id)
           else photosLeftOut++ // no longer on this device
         } catch (error) {
-          if (isConnectionFailure(error)) throw error
+          if (stops(error)) throw error
           // Not taken this time (the drafts are full, a server error): the change is not sent, so its photos are not lost; it waits.
           console.warn('A photo kept on this device was not taken as a draft; its change waits for the next sync.', error)
           photosWaiting++
@@ -259,7 +268,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
           try {
             await send(group)
           } catch (error) {
-            if (isConnectionFailure(error)) throw error
+            if (stops(error)) throw error
             if (group.length === 1) {
               refused(error)
               continue
@@ -269,7 +278,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
               try {
                 await send([change])
               } catch (single) {
-                if (isConnectionFailure(single)) throw single
+                if (stops(single)) throw single
                 refused(single)
               }
             }
@@ -277,7 +286,8 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
         }
       }
     } catch (error) {
-      if (!isConnectionFailure(error)) console.warn('Sending the changes kept on this device failed; the next sync tries again.', error)
+      if (isBusy(error)) busy = true
+      else if (!isConnectionFailure(error)) console.warn('Sending the changes kept on this device failed; the next sync tries again.', error)
       interrupted = true
     }
     // The download runs after every sync, whatever was answered: a change that waits must never keep the device from the server's rows.
@@ -290,9 +300,16 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     const stillNeeded = new Set(outbox.changes.flatMap(needs))
     await device.keep(PARKED_ADDS_KEY, [...blocked].filter((id) => stillNeeded.has(id))).catch(() => undefined)
     set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted, photosLeftOut, photosWaiting } })
+    // Busy with a run (#335): the device's other triggers can be far apart, so it comes again by itself, once.
+    if (busy && retry === null) {
+      retry = setTimeout(() => {
+        retry = null
+        void engine.run()
+      }, busyRetryMs)
+    }
   }
 
-  return {
+  const engine = {
     get state(): PushState {
       return state
     },
@@ -319,6 +336,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
       return running
     },
   }
+  return engine
 }
 
 export type PushEngine = ReturnType<typeof createPushEngine>

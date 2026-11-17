@@ -13,26 +13,41 @@ namespace Tankstat.Infrastructure.Backups;
 /// </summary>
 public static class BackupFile
 {
+    /// <summary>An export given where a backup is wanted (the folder's upload, a restore, the command line).</summary>
+    public const string IsExportKey = "backup.isExport";
+
     /// <summary>
     /// The manifest of a backup file; <c>backup.corrupt</c> when the file is not a backup. Only a whole manifest Tankstat wrote counts: another
     /// program's <c>manifest.json</c> (a browser extension's, say) reads as one with nothing set, and one that lacks what every backup states
     /// (the release and the database it came from, where its photos are) is no backup either, so nothing that lists backups meets a gap.
     /// </summary>
-    public static BackupManifest ReadManifest(string path)
+    /// <param name="exports">
+    /// Whether a file written as an export (<see cref="BackupManifest.Export"/>, #341) counts: only for the reader of cars (#336). An
+    /// export is never a restore point: everything else refuses it.
+    /// </param>
+    public static BackupManifest ReadManifest(string path, bool exports = false)
     {
         BackupManifest manifest;
         try
         {
             using var zip = ZipFile.OpenRead(path);
             var entry = zip.GetEntry(BackupManifest.FileName) ?? throw NotABackup();
-            using var reader = new StreamReader(entry.Open());
+            // A manifest is a few kilobytes: an entry far larger is no backup's, and is never read into memory whole (whatever its header says).
+            if (entry.Length > MaxManifestBytes) throw NotABackup();
+            using var stored = new MemoryStream();
+            using (var data = entry.Open()) CopyAtMost(data, stored, MaxManifestBytes);
+            stored.Position = 0;
+            using var reader = new StreamReader(stored); // as before the cap: a byte order mark is skipped
             manifest = BackupManifest.FromJson(reader.ReadToEnd());
         }
         catch (Exception e) when (e is InvalidDataException or JsonException)
         {
             throw NotABackup();
         }
-        if (manifest.WrittenBy != BackupManifest.Tankstat) throw NotABackup();
+        // An export of someone's cars (#341) is never a restore point: said as such, so the person is sent to the Import and export page.
+        if (manifest.WrittenBy == BackupManifest.Export && !exports)
+            throw new DomainException(IsExportKey, "This file is an export of someone's cars, not a backup of the server.");
+        if (manifest.WrittenBy != BackupManifest.Tankstat && !(exports && manifest.WrittenBy == BackupManifest.Export)) throw NotABackup();
         if (manifest.Format > BackupManifest.CurrentFormat)
             throw new DomainException("backup.newerFormat", "The backup was written by a newer release.", new { manifest.Format, manifest.AppVersion });
         if (manifest is not { AppVersion: not null, Provider: not null, Archive: { Name: not null, Sha256: not null }, Contents.Tables: not null, Sizes: not null }
@@ -84,6 +99,9 @@ public static class BackupFile
             throw NotABackup();
         }
     }
+
+    /// <summary>The most a manifest may hold.</summary>
+    private const int MaxManifestBytes = 1024 * 1024;
 
     /// <summary>The most a backup's settings entry may hold, as stored.</summary>
     private const int MaxSettingsBytes = 1024 * 1024;

@@ -101,6 +101,49 @@ type Query {
   importPreview(token: String!, vehicleId: UUID): ImportPreviewInfo!
     @cost(weight: "10")
   importFormats: [String!]!
+  backupImport(token: String!): BackupImportInfo! @cost(weight: "10")
+  canImportFromBackup: Boolean! @cost(weight: "10")
+  backupImportCars(token: String!): ImportCarOffersInfo! @cost(weight: "10")
+  backupImportReview(token: String!, cars: [ImportCarChoiceInput!]!): [ImportCarReviewInfo!]!
+    @cost(weight: "10")
+  backupImportEntries(
+    token: String!
+    carId: UUID!
+    targetVehicleId: UUID!
+    kind: String!
+    differing: Boolean!
+    skip: Int!
+    take: Int!
+    tyres: ImportTyreChoiceInput
+  ): ImportEntryPageInfo! @cost(weight: "10")
+  importRun(id: UUID!): ImportRunInfo @cost(weight: "10")
+  myImportRun: ImportRunInfo @cost(weight: "10")
+  importRuns: [ImportRunInfo!]! @cost(weight: "10")
+  carRestore(token: String!): BackupImportInfo! @cost(weight: "10")
+  restoreCars(
+    token: String!
+    search: String
+    ownerId: UUID
+    skip: Int!
+    take: Int!
+  ): RestoreCarPageInfo! @cost(weight: "10")
+  restorePeople: [RestorePersonInfo!]! @cost(weight: "10")
+  restoreReview(token: String!, cars: [ImportCarChoiceInput!]!): [ImportCarReviewInfo!]!
+    @cost(weight: "10")
+  restoreEntries(
+    token: String!
+    carId: UUID!
+    kind: String!
+    differing: Boolean!
+    skip: Int!
+    take: Int!
+    tyres: ImportTyreChoiceInput
+  ): ImportEntryPageInfo! @cost(weight: "10")
+  myRestoreRun: ImportRunInfo @cost(weight: "10")
+  canExport: Boolean! @cost(weight: "10")
+  exportCars: [ExportCarOfferInfo!]! @cost(weight: "10")
+  exportPassphraseMinLength: Int! @cost(weight: "10")
+  myExport: ExportInfo @cost(weight: "10")
   vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
     @cost(weight: "10")
   vehicleTrend(
@@ -219,6 +262,21 @@ type Mutation {
   markNotificationsRead(ids: [UUID!]): [NotificationInfo!]! @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")
+  openBackupImport(input: OpenBackupImportInput!): BackupImportInfo!
+    @cost(weight: "10")
+  endBackupImport(token: String!): Boolean! @cost(weight: "10")
+  startBackupImport(input: StartBackupImportInput!): ImportRunInfo!
+    @cost(weight: "10")
+  cancelImportRun(id: UUID!): Boolean! @cost(weight: "10")
+  openCarRestore(file: String!): BackupImportInfo! @cost(weight: "10")
+  submitCarRestoreKey(input: CarRestoreKeyInput!): BackupImportInfo!
+    @cost(weight: "10")
+  startCarRestore(input: StartCarRestoreInput!): ImportRunInfo!
+    @cost(weight: "10")
+  endCarRestore(token: String!): Boolean! @cost(weight: "10")
+  startExport(input: StartExportInput!): ExportInfo! @cost(weight: "10")
+  cancelExport: Boolean! @cost(weight: "10")
+  deleteExport: Boolean! @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
   saveVehicleWidget(input: SaveWidgetInput!): SavedWidget! @cost(weight: "10")
   deleteVehicleChart(id: UUID!): Boolean! @cost(weight: "10")
@@ -251,6 +309,21 @@ type AccessGrantInfo {
 
 type AccessSettingsInfo {
   defaultLevelForOthers: AccessLevel!
+}
+
+type BackupCarInfo {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  fuelType: FuelType!
+  distanceUnit: DistanceUnit!
+  volumeUnit: VolumeUnit!
+  ownerName: String
+  refuelings: Int!
+  expenses: Int!
+  schedules: Int!
+  ownerId: UUID!
+  ownerEmail: String
 }
 
 type BackupDetailsInfo {
@@ -289,6 +362,28 @@ type BackupEnvironmentInfo {
   missingCertain: Boolean!
   overridden: [String!]!
   logLevelsMissing: [String!]!
+}
+
+type BackupFileInfo {
+  createdAt: DateTime!
+  version: String!
+  isExport: Boolean!
+  cars: [BackupCarInfo!]!
+  trashedCars: Int!
+}
+
+type BackupImportInfo {
+  token: String!
+  state: BackupImportState!
+  triesLeft: Int
+  wrongKey: Boolean!
+  file: BackupFileInfo
+  refusal: BackupImportRefusalInfo
+}
+
+type BackupImportRefusalInfo {
+  key: String!
+  args: Any!
 }
 
 type BackupKeySetInfo {
@@ -474,12 +569,53 @@ type Expense {
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
+  createdByGone: Boolean! @cost(weight: "10")
   changedBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
   schedules: [RecurringRef!]! @cost(weight: "10")
   tyreEntry: TyreEntryRef @cost(weight: "10")
   tyreEntries: [TyreEntryRef!]! @cost(weight: "10")
+}
+
+type ExportCarOfferInfo {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  refuelings: Int!
+  expenses: Int!
+  schedules: Int!
+  tyreSets: Int!
+  charts: Int!
+  photos: Int!
+  photoBytes: Long!
+  pictureBytes: Long!
+  rowBytes: Long!
+}
+
+type ExportInfo {
+  id: UUID!
+  state: ExportState!
+  carNames: [String!]!
+  encrypted: Boolean!
+  startedAt: DateTime!
+  readyAt: DateTime
+  keptUntil: DateTime
+  deletedAt: DateTime
+  bytes: Long
+  failureKey: String
+  progress: ExportProgressInfo
+  largerThanImport: Boolean!
+  importMaxMb: Int!
+  downloadUrl: String
+  kept: ExportInfo
+}
+
+type ExportProgressInfo {
+  car: Int!
+  cars: Int!
+  done: Int!
+  total: Int!
 }
 
 type FigureData {
@@ -514,6 +650,64 @@ type HealthReport {
   databaseReachable: Boolean!
 }
 
+type ImportCarOfferInfo {
+  car: BackupCarInfo!
+  ownedByMe: Boolean!
+  suggestedTargetId: UUID
+}
+
+type ImportCarOffersInfo {
+  file: BackupFileInfo!
+  cars: [ImportCarOfferInfo!]!
+  targets: [ImportOwnCarInfo!]!
+}
+
+type ImportCarReportInfo {
+  carId: UUID!
+  name: String!
+  vehicleId: UUID
+  targetName: String
+  asNew: Boolean!
+  leftOut: Boolean!
+  refuelings: Int!
+  expenses: Int!
+  schedules: Int!
+  existing: Int!
+  differing: Int!
+  inTrash: Int!
+  refused: [ImportRefusedEntryInfo!]!
+  refusedMore: Int!
+  kinds: [ImportKindReportInfo!]!
+  replacing: Boolean!
+  links: Int!
+  tyres: ImportTyreReportInfo
+  media: ImportMediaReportInfo
+  restore: ImportRestoreReportInfo
+}
+
+type ImportCarReviewInfo {
+  carId: UUID!
+  name: String!
+  ownerName: String
+  ownedByMe: Boolean!
+  targetVehicleId: UUID
+  targetName: String
+  newRefuelings: Int!
+  newExpenses: Int!
+  newSchedules: Int!
+  existingRefuelings: Int!
+  existingExpenses: Int!
+  existingSchedules: Int!
+  differing: Int!
+  inTrash: Int!
+  kinds: [ImportKindReviewInfo!]!
+  links: Boolean!
+  linksLost: Int!
+  tyres: ImportTyreReviewInfo!
+  media: ImportMediaReviewInfo
+  restore: RestoreCarReviewInfo
+}
+
 type ImportedVehicleInfo {
   name: String
   licensePlate: String
@@ -522,11 +716,92 @@ type ImportedVehicleInfo {
   volumeUnit: VolumeUnit
 }
 
+type ImportEntryInfo {
+  id: UUID!
+  date: LocalDate
+  odometer: Long
+  title: String
+  amount: Decimal
+  currency: String
+  volume: Decimal
+  differences: [ImportFieldDifferenceInfo!]!
+}
+
+type ImportEntryPageInfo {
+  total: Int!
+  items: [ImportEntryInfo!]!
+}
+
+type ImportFieldDifferenceInfo {
+  field: String!
+  backup: String
+  target: String
+}
+
 type ImportIssueInfo {
   section: String!
   row: Int!
   key: String!
   args: Any!
+}
+
+type ImportKindReportInfo {
+  kind: String!
+  mode: ImportKindMode!
+  imported: Int!
+  changed: Int!
+  deleted: Int!
+}
+
+type ImportKindReviewInfo {
+  kind: String!
+  mode: ImportKindMode!
+  backup: Int!
+  new: Int!
+  differ: Int!
+  same: Int!
+  inTrash: Int!
+  adds: Int!
+  takes: Int!
+  targetLive: Int!
+  targetTrashed: Int!
+  withPhotos: Int!
+  onTyreLines: Int!
+  photosLost: Int!
+}
+
+type ImportMediaReportInfo {
+  photos: Int!
+  photosHere: Int!
+  picture: Boolean!
+  charts: Int!
+  chartsHere: Int!
+  dashboard: Boolean!
+  ownDashboard: Boolean!
+  tilesLeftOut: Int!
+}
+
+type ImportMediaReviewInfo {
+  photosNew: Int!
+  photosHere: Int!
+  photosLeftOut: Boolean!
+  picture: Boolean!
+  targetPicture: Boolean!
+  chartsNew: Int!
+  chartsHere: Int!
+  ownChartsNew: Int!
+  dashboard: Boolean!
+  targetDashboard: Boolean!
+  ownDashboard: Boolean!
+  targetOwnDashboard: Boolean!
+}
+
+type ImportOwnCarInfo {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  distanceUnit: DistanceUnit!
+  volumeUnit: VolumeUnit!
 }
 
 type ImportPreviewInfo {
@@ -543,6 +818,23 @@ type ImportPreviewInfo {
   issues: [ImportIssueInfo!]!
 }
 
+type ImportRefusedEntryInfo {
+  kind: String!
+  date: LocalDate
+  title: String
+  key: String!
+  args: Any!
+}
+
+type ImportRestoreReportInfo {
+  ownerId: UUID!
+  cameBack: Boolean!
+  grants: Int!
+  goneGrantees: [String!]!
+  peopleLeftOut: Int!
+  ownerName: String
+}
+
 type ImportResultInfo {
   vehicleId: UUID!
   fuelImported: Int!
@@ -552,6 +844,68 @@ type ImportResultInfo {
   expensesSkippedDuplicates: Int!
   recurringSkippedDuplicates: Int!
   errors: [ImportIssueInfo!]!
+}
+
+type ImportRunCarInfo {
+  carId: UUID!
+  name: String!
+  targetVehicleId: UUID
+  targetName: String
+}
+
+type ImportRunInfo {
+  id: UUID!
+  kind: ImportRunKind!
+  startedByName: String
+  mine: Boolean!
+  state: ImportRunState!
+  failure: ImportRunFailure
+  queuedAt: DateTime!
+  startedAt: DateTime
+  endedAt: DateTime
+  ahead: Int!
+  progress: ImportRunProgressInfo!
+  cars: [ImportRunCarInfo!]!
+  report: [ImportCarReportInfo!]
+  fileToken: String
+  limitMinutes: Int!
+  backupOf: DateTime
+}
+
+type ImportRunProgressInfo {
+  car: Int!
+  cars: Int!
+  done: Int!
+  total: Int!
+}
+
+type ImportSetOfferInfo {
+  id: UUID!
+  name: String!
+  season: TyreSeason!
+  state: ImportSetState!
+  installations: Int!
+  lines: Int!
+  tyres: Int!
+  expenses: Int!
+  refusalKey: String
+  refusalArgs: Any
+}
+
+type ImportTyreReportInfo {
+  sets: [String!]!
+  lines: Int!
+  tyres: Int!
+  noSetLines: Int!
+  expenses: Int!
+  amountsHere: Int!
+}
+
+type ImportTyreReviewInfo {
+  sets: [ImportSetOfferInfo!]!
+  noSetLines: Int!
+  noSetExpenses: Int!
+  expenses: Int!
 }
 
 type InstallationDistance {
@@ -770,6 +1124,7 @@ type Refueling {
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
+  createdByGone: Boolean! @cost(weight: "10")
   changedBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
@@ -780,9 +1135,48 @@ type RemovedEntity {
   id: UUID!
 }
 
+type RestoreCarOfferInfo {
+  car: BackupCarInfo!
+  state: RestoreCarState!
+  ownerIdHere: UUID
+  ownerNameHere: String
+  missingRefuelings: Int!
+  missingExpenses: Int!
+  missingSchedules: Int!
+  missingTyreSets: Int!
+  grants: Int!
+  goneGrantees: [String!]!
+  sameEmailUserId: UUID
+}
+
+type RestoreCarPageInfo {
+  total: Int!
+  cars: [RestoreCarOfferInfo!]!
+  owners: [RestoreOwnerInfo!]!
+}
+
+type RestoreCarReviewInfo {
+  state: RestoreCarState!
+  ownerId: UUID!
+  ownerName: String
+  access: [String!]!
+  goneAccess: [String!]!
+}
+
+type RestoreOwnerInfo {
+  id: UUID!
+  name: String
+}
+
 type RestorePendingInfo {
   file: String!
   restorePoint: DateTime!
+}
+
+type RestorePersonInfo {
+  id: UUID!
+  name: String!
+  email: String!
 }
 
 type RestorePointInfo {
@@ -1482,6 +1876,12 @@ input BreakUpTyreSetInput {
   tyres: [NewTyreInput!]!
 }
 
+input CarRestoreKeyInput {
+  token: String!
+  passphrase: String
+  identity: String
+}
+
 input ChangeInput {
   id: UUID!
   expectedVersion: Int
@@ -1609,6 +2009,17 @@ input ExpenseTyreInput {
   lineId: UUID
 }
 
+input ExportCarInput {
+  vehicleId: UUID!
+  refuelings: Boolean
+  expenses: Boolean
+  schedules: Boolean
+  tyres: Boolean
+  charts: Boolean
+  photos: Boolean
+  picture: Boolean
+}
+
 input FigureRecipeInput {
   measure: FigureMeasure!
   period: TrendPeriodInput
@@ -1623,6 +2034,41 @@ input GridSettingsInput {
   pageSize: Int!
   sortColumn: String!
   sortDirection: SortDirection!
+}
+
+input ImportCarChoiceInput {
+  carId: UUID!
+  targetVehicleId: UUID
+  policy: RefusedEntryPolicy
+  refuelings: ImportKindChoiceInput
+  expenses: ImportKindChoiceInput
+  schedules: ImportKindChoiceInput
+  confirmedName: String
+  tyres: ImportTyreChoiceInput
+  media: ImportMediaChoiceInput
+  ownerId: UUID
+}
+
+input ImportKindChoiceInput {
+  mode: ImportKindMode!
+  addNew: Boolean
+  newExceptions: [UUID!]
+  takeBackups: Boolean
+  differExceptions: [UUID!]
+}
+
+input ImportMediaChoiceInput {
+  photos: Boolean!
+  picture: Boolean
+  charts: Boolean!
+  dashboard: Boolean
+  ownDashboard: Boolean
+}
+
+input ImportTyreChoiceInput {
+  sets: [UUID!]
+  noSetLines: Boolean
+  except: [UUID!]
 }
 
 input LoginInput {
@@ -1688,6 +2134,11 @@ input OfflineChangesInput {
 input OfflineVehicleWindowInput {
   vehicleId: UUID!
   window: String!
+}
+
+input OpenBackupImportInput {
+  token: String!
+  passphrase: String
 }
 
 input PastTyreSwapInput {
@@ -1802,6 +2253,22 @@ input SetupFinishInput {
 input SetVehiclePictureInput {
   vehicleId: UUID!
   draftId: UUID!
+}
+
+input StartBackupImportInput {
+  token: String!
+  cars: [ImportCarChoiceInput!]!
+}
+
+input StartCarRestoreInput {
+  token: String!
+  cars: [ImportCarChoiceInput!]!
+}
+
+input StartExportInput {
+  cars: [ExportCarInput!]!
+  passphrase: String
+  passphraseConfirmation: String
 }
 
 input SwapTyresInput {
@@ -2006,6 +2473,13 @@ enum BackupEnvironmentMode {
   MERGE
 }
 
+enum BackupImportState {
+  NEEDS_KEY
+  OPENING
+  OPENED
+  ENDED
+}
+
 enum BackupPhotos {
   WITH_PICTURES
   SEPARATE
@@ -2123,6 +2597,7 @@ enum EntityChange {
   RESTORED
   DONE
   FILLED_FROM_PHOTO
+  RESTORED_FROM_BACKUP
 }
 
 enum ExpenseSortField {
@@ -2134,6 +2609,15 @@ enum ExpenseSortField {
   CREATED_BY
   VEHICLE
   DELETED_AT
+}
+
+enum ExportState {
+  BUILDING
+  READY
+  FAILED
+  CANCELLED
+  INTERRUPTED
+  EXPIRED
 }
 
 enum FigureMeasure {
@@ -2156,6 +2640,40 @@ enum FuelType {
   PETROL
   DIESEL
   LPG
+}
+
+enum ImportKindMode {
+  ONLY_MISSING
+  DONT_IMPORT
+  REPLACE_ALL
+  CHOOSE
+}
+
+enum ImportRunFailure {
+  FAILED
+  CANCELLED
+  TIMED_OUT
+  INTERRUPTED
+  DID_NOT_START
+}
+
+enum ImportRunKind {
+  IMPORT
+  RESTORE
+}
+
+enum ImportRunState {
+  WAITING
+  RUNNING
+  DONE
+  NOT_FINISHED
+}
+
+enum ImportSetState {
+  NEW
+  HERE
+  REFUSED
+  IN_TRASH
 }
 
 enum InstallationMeasure {
@@ -2185,6 +2703,8 @@ enum NotificationEntityType {
   EXPENSE
   SYNC_CHANGE
   TYRE_SET
+  IMPORT_RUN
+  EXPORT
 }
 
 enum NotificationKind {
@@ -2201,6 +2721,18 @@ enum NotificationKind {
   MORE_ACTIVITY
   BACKUP_FAILED
   TYRE_SWAP_DUE
+  IMPORT_FINISHED
+  IMPORT_NOT_FINISHED
+  IMPORT_CANCELLED
+  CARS_IMPORTED
+  RESTORE_FINISHED
+  RESTORE_NOT_FINISHED
+  RESTORE_CANCELLED
+  CARS_RESTORED
+  CAR_RESTORED
+  EXPORT_READY
+  EXPORT_FAILED
+  CARS_EXPORTED
 }
 
 enum OfflineEntityType {
@@ -2277,6 +2809,18 @@ enum RefuelingSortField {
   CREATED_BY
   VEHICLE
   DELETED_AT
+}
+
+enum RefusedEntryPolicy {
+  IMPORT_THE_REST
+  LEAVE_CAR_OUT
+}
+
+enum RestoreCarState {
+  HERE
+  GONE
+  OWNER_GONE
+  IN_TRASH
 }
 
 enum ReviewState {

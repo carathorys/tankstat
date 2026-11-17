@@ -39,4 +39,10 @@ public interface IRefuelingRepository
 
     /// <summary>Physically removes the trashed logs in scope, with their photo rows. Returns which ones, so their photo files can be removed.</summary>
     Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct);
+
+    /// <summary>
+    /// Deletes every refuelling of the vehicle for good, those in the trash too, with their readings and costs, through the change tracker
+    /// (the devices learn of each), and their photos' rows (#339), whose images it hands back.
+    /// </summary>
+    Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct);
 }

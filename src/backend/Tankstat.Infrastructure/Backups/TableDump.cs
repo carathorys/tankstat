@@ -58,21 +58,39 @@ internal static class TableDump
     /// <summary>Writes the rows of a table as JSON Lines; returns how many rows and how many bytes.</summary>
     public static async Task<(long Rows, long Bytes)> WriteAsync(BackupSource source, ISqlGenerationHelper sql, DumpTable table, Stream output, CancellationToken ct)
     {
+        await using var command = source.Command(Select(sql, table, null));
+        return await WriteAsync(command, table, output, null, ct);
+    }
+
+    /// <summary>The table's columns, in its key's order, optionally under a condition (an export's, #341: its column names delimited by the caller).</summary>
+    public static string Select(ISqlGenerationHelper sql, DumpTable table, string? where)
+    {
         var columns = string.Join(", ", table.Columns.Select(c => sql.DelimitIdentifier(c.Name)));
         var order = table.OrderBy.Count == 0 ? "" : " ORDER BY " + string.Join(", ", table.OrderBy.Select(c => sql.DelimitIdentifier(c)));
-        await using var command = source.Command($"SELECT {columns} FROM {sql.DelimitIdentifier(table.Name, table.Schema)}{order}");
+        return $"SELECT {columns} FROM {sql.DelimitIdentifier(table.Name, table.Schema)}{(where is null ? "" : " WHERE " + where)}{order}";
+    }
+
+    /// <summary>
+    /// Writes the rows a command reads (the table's columns, in their order) as JSON Lines. <paramref name="hook"/> sees each row's values as
+    /// they were read (null for a database null) and may change them in place; a row it answers false for is left out (an export, #341).
+    /// </summary>
+    public static async Task<(long Rows, long Bytes)> WriteAsync(DbCommand command, DumpTable table, Stream output, Func<object?[], bool>? hook, CancellationToken ct)
+    {
         await using var reader = await command.ExecuteReaderAsync(ct);
         var buffer = new ArrayBufferWriter<byte>(4096);
         await using var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { SkipValidation = true });
         long rows = 0, bytes = 0;
+        var values = new object?[table.Columns.Count];
         while (await reader.ReadAsync(ct))
         {
+            for (var i = 0; i < table.Columns.Count; i++) values[i] = reader.IsDBNull(i) ? null : table.Columns[i].Read(reader, i);
+            if (hook is not null && !hook(values)) continue;
             writer.WriteStartObject();
             for (var i = 0; i < table.Columns.Count; i++)
             {
                 writer.WritePropertyName(table.Columns[i].Name);
-                if (reader.IsDBNull(i)) writer.WriteNullValue();
-                else WriteValue(writer, table.Columns[i].Read(reader, i));
+                if (values[i] is null) writer.WriteNullValue();
+                else WriteValue(writer, values[i]!);
             }
             writer.WriteEndObject();
             writer.Flush();

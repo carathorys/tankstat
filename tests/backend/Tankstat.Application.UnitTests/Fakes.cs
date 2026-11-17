@@ -162,6 +162,7 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
         Items.RemoveAll(doomed.Contains);
         return Task.FromResult(new PurgedLogs(doomed.Count, doomed.Select(r => (r.VehicleId, r.Id)).ToList()));
     }
+    public Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(new VehiclePurge(Items.RemoveAll(r => r.VehicleId == vehicleId), 0, 0));
 }
 
 internal sealed class InMemoryExpenses : IExpenseRepository
@@ -196,6 +197,7 @@ internal sealed class InMemoryExpenses : IExpenseRepository
         Items.RemoveAll(doomed.Contains);
         return Task.FromResult(new PurgedLogs(doomed.Count, doomed.Select(e => (e.VehicleId, e.Id)).ToList()));
     }
+    public Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(new VehiclePurge(Items.RemoveAll(e => e.VehicleId == vehicleId), 0, 0));
 }
 
 internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringExpenseRepository
@@ -280,6 +282,12 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
         Completions.AddRange(links);
         Keep(items);
         return Task.CompletedTask;
+    }
+    public Task<bool> LinkAsync(Guid expenseId, Guid recurringExpenseId, CancellationToken ct)
+    {
+        if (Completions.Any(c => c.ExpenseId == expenseId && c.RecurringExpenseId == recurringExpenseId)) return Task.FromResult(false);
+        Completions.Add(RecurringCompletion.Create(expenseId, recurringExpenseId));
+        return Task.FromResult(true);
     }
     public Task<IReadOnlyList<CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<CompletedSchedule>>(Completions.Where(c => expenseIds.Contains(c.ExpenseId))
@@ -721,6 +729,7 @@ internal sealed class InMemoryLogPhotos : ILogPhotoRepository
     public Task<int> CountForLogAsync(LogType logType, Guid logId, CancellationToken ct) =>
         Task.FromResult(Items.Count(p => p.LogType == logType && p.LogId == logId));
     public Task<LogPhoto?> FindByImageAsync(Guid imageId, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.ImageId == imageId));
+    public Task<LogPhoto?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.Id == id));
     public Task AddAsync(LogPhoto photo, CancellationToken ct)
     {
         if (FailAdds) throw new InvalidOperationException("database down");
@@ -960,6 +969,20 @@ internal sealed class InMemorySettings : IAccessSettingsRepository
     public Task SaveAsync(AccessSettings s, CancellationToken ct) => Task.CompletedTask;
 }
 
+/// <summary>The uploaded backups people have open (#336): only who had one, for what ends them.</summary>
+internal sealed class FakeBackupImportSessions : Tankstat.Application.Imports.IBackupImportSessions
+{
+    public List<Guid> EndedFor { get; } = [];
+    public Task<Tankstat.Application.Imports.BackupImportStatus> UploadAsync(Guid userId, Stream content, CancellationToken ct) => throw new NotSupportedException();
+    public Task<Tankstat.Application.Imports.BackupImportStatus> OpenFileAsync(Guid userId, string path, CancellationToken ct) => throw new NotSupportedException();
+    public Tankstat.Application.Imports.BackupImportStatus SubmitKey(Guid userId, string token, string? passphrase, string? identity) => throw new NotSupportedException();
+    public Tankstat.Application.Imports.BackupImportStatus? Find(Guid userId, string token) => null;
+    public Tankstat.Application.Imports.IBackupCars? Cars(Guid userId, string token) => null;
+    public IDisposable? Hold(Guid userId, string token) => null;
+    public void End(Guid userId, string token) { }
+    public void EndForUser(Guid userId) => EndedFor.Add(userId);
+}
+
 internal sealed class FakeCurrentUser : ICurrentUser
 {
     public Principal? Principal { get; set; }
@@ -1062,6 +1085,8 @@ internal sealed class World
     public InMemoryUsers Users { get; } = new();
     public FakeUserData UserData { get; } = new();
     public ImportSessionStore ImportSessions { get; }
+    public FakeBackupImportSessions BackupImports { get; } = new();
+    public FakeExports Exports { get; } = new();
     public InMemoryTokens Tokens { get; } = new();
     public InMemorySessions Sessions { get; } = new();
     public InMemoryGrants Grants { get; } = new();
@@ -1183,7 +1208,7 @@ internal sealed class World
         ResetQueue = new FakeResetQueue(resets);
         Passwords = new PasswordRequirements(PasswordSettings, Log.For<PasswordRequirements>());
         Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Passwords, Clock, Log.For<AuthService>());
-        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Passwords, Log.For<UserService>());
+        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, BackupImports, Exports, Exports, options, Passwords, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
         SetupStore = new InMemorySetupStore(Users, Vehicles) { Phase = SetupPhase.Completed };
@@ -1282,4 +1307,31 @@ internal sealed class FakeFileProbe : Tankstat.Application.IFileProbe
 {
     public HashSet<string> Files { get; } = [];
     public bool Exists(string path) => Files.Contains(path);
+}
+
+/// <summary>The exports' folder and runner in memory (#341): what a deleted account leaves of them.</summary>
+public sealed class FakeExports : Tankstat.Application.Exports.IExportFiles, Tankstat.Application.Exports.IExportRunner
+{
+    public Dictionary<Guid, Tankstat.Application.Exports.ExportRecord> Saved { get; } = [];
+    public HashSet<Guid> Files { get; } = [];
+    public List<Guid> Cancelled { get; } = [];
+
+    public IReadOnlyList<Tankstat.Application.Exports.ExportRecord> Records() => [.. Saved.Values];
+    public void Save(Tankstat.Application.Exports.ExportRecord record) => Saved[record.Id] = record;
+    public string FileOf(Guid id) => $"{id:N}.zip";
+    public Stream? OpenRead(Guid id) => Files.Contains(id) ? new MemoryStream() : null;
+    public void DeleteFile(Guid id) => Files.Remove(id);
+    public void DeleteRecord(Guid id) => Saved.Remove(id);
+    public void RemovePartials() { }
+    public void Start(Tankstat.Application.Exports.ExportJob job) { }
+    public bool Cancel(Guid ownerId)
+    {
+        Cancelled.Add(ownerId);
+        return false;
+    }
+    public List<Guid> Forgotten { get; } = [];
+    public void Forget(Guid ownerId) => Forgotten.Add(ownerId);
+    public DateTimeOffset Since => DateTimeOffset.MinValue;
+    public Tankstat.Application.Exports.ExportProgress? ProgressOf(Guid id) => null;
+    public bool IsRunning(Guid id) => false;
 }

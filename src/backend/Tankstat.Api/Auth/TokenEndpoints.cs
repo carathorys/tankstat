@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Users;
 
 namespace Tankstat.Api.Auth;
@@ -31,16 +32,38 @@ internal static class TokenEndpoints
                 await SessionCookies.ClearAsync(http);
                 return Results.Json(new { key = e.Key, args = e.Args, message = e.Message }, statusCode: StatusCodes.Status401Unauthorized);
             }
+            catch (Exception e) when (e is BusyException || http.RequestServices.GetRequiredService<IBusyFailures>().IsBusy(e))
+            {
+                // A run (#335) holds the database: the session is as good as it was, nobody is signed out by it. The cookies stay, and the
+                // client takes this as a refresh that could not be made now, never as "sign in again".
+                return Busy();
+            }
         });
 
         // Signs this device out: its session ends and both cookies go, even when the access cookie already ran out.
-        app.MapPost("/auth/token/logout", async (HttpContext http, IOptions<AuthOptions> auth, UserSessionService sessions, CancellationToken ct) =>
+        app.MapPost("/auth/token/logout", async (HttpContext http, IOptions<AuthOptions> auth, UserSessionService sessions, RunGateState runs, CancellationToken ct) =>
         {
             if (Refused(http, auth) is { } refused) return refused;
-            await sessions.RevokeByTokenAsync(SessionCookies.Refresh(http), ct);
+            // A run (#335) holds SQLite's lock: the session cannot be ended now. Said at once, before the device's own deadline for this
+            // request, and with the cookies kept: the device has signed out already and tells the server again (it needs the cookie for it).
+            if (runs.WritesLockedOut) return Busy();
+            try
+            {
+                await sessions.RevokeByTokenAsync(SessionCookies.Refresh(http), ct);
+            }
+            catch (Exception e) when (e is BusyException || http.RequestServices.GetRequiredService<IBusyFailures>().IsBusy(e))
+            {
+                return Busy(); // the lock came while it waited
+            }
             await SessionCookies.ClearAsync(http);
             return Results.NoContent();
         });
+    }
+
+    private static IResult Busy()
+    {
+        var busy = new BusyException();
+        return Results.Json(new { key = busy.Key, args = busy.Args, message = busy.Message }, statusCode: StatusCodes.Status409Conflict);
     }
 
     private static IResult? Refused(HttpContext http, IOptions<AuthOptions> auth)

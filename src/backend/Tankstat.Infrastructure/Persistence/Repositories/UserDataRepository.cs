@@ -49,6 +49,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.SyncChanges.Where(c => c.SubmittedById == userId).ExecuteDeleteAsync(ct);
         await db.OfflineSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync(ct);
         await db.OfflineVehicleSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync(ct);
+        await db.ImportRuns.Where(r => r.StartedById == userId).ExecuteDeleteAsync(ct); // their imports' reports are theirs alone, never moved (#337)
         await db.Users.Where(u => u.Id == userId).ExecuteDeleteAsync(ct);
 
         await tx.CommitAsync(ct);

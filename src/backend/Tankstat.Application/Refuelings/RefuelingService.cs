@@ -106,7 +106,8 @@ public sealed class RefuelingService(
     }
 
     /// <param name="expectedVersion">The version the change was made from; refused when the log was saved since (see <see cref="VersionCheck"/>).</param>
-    public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct, int? expectedVersion = null)
+    /// <param name="recalculateConsumption">False when the caller changes many logs of the vehicle and recalculates once itself (an import).</param>
+    public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct, int? expectedVersion = null, bool recalculateConsumption = true)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
         VersionCheck.Require(expectedVersion, refueling.Version);
@@ -121,7 +122,7 @@ public sealed class RefuelingService(
         await refuelings.UpdateAsync(refueling, changes, ct);
         // Readings that finished before the save are taken now (the worker's round may have passed while the log did not wait yet).
         if (refueling.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, id, ct);
-        await RecalculateConsumptionAsync(refueling.VehicleId, ct);
+        if (recalculateConsumption) await RecalculateConsumptionAsync(refueling.VehicleId, ct);
         logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} updated", id, refueling.VehicleId);
         if (waited != ReviewState.None && refueling.ReviewState == ReviewState.None)
             await filler.ReviewedAsync(LogType.Refueling, id, refueling.CreatedById, ct);
@@ -185,10 +186,27 @@ public sealed class RefuelingService(
     public async Task<int> CountDeletableTrashAsync(CancellationToken ct) =>
         await refuelings.CountDeletedAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
 
+    /// <summary>
+    /// Deletes every refuelling of the vehicle for good, those in the trash too (#338: an import's <i>Replace all</i>). Needs Delete access to
+    /// the vehicle's logs. Their photos go with them (#339). Returns how many went.
+    /// </summary>
+    public async Task<int> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        var user = await access.RequirePrincipalAsync(ct);
+        var context = await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct), () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct);
+        if (context.Level < AccessLevel.Delete) throw new ForbiddenException(VehiclePurgeRefusals.NoDeleteKey, "You may not delete this vehicle's logs for good.");
+        var purged = await refuelings.PurgeForVehicleAsync(vehicleId, ct);
+        if (purged.HeldBack) throw VehiclePurgeRefusals.HeldBack(purged);
+        await photos.DeleteImagesAsync(purged.Photos ?? [], ct); // inside a run their files go after the commit
+        logger.LogInformation("User {UserId} deleted every refuelling of vehicle {VehicleId} for good: {Count}", user.Id, vehicleId, purged.Deleted);
+        return purged.Deleted;
+    }
+
     /// <summary>Permanently removes the trashed logs the user has Delete access to. Returns how many were removed.</summary>
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
         var user = await access.RequirePrincipalAsync(ct);
+        await access.WaitForRunsAsync(ct); // what is purged may be a run's (#335)
         var purged = await refuelings.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
         await photos.DeleteFilesAsync(LogType.Refueling, purged, ct); // their photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the refueling trash: {Count} refuelings deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);
@@ -237,16 +255,16 @@ public sealed class RefuelingService(
     /// <summary>A visible vehicle the user may add logs to; others look missing, view-only users are forbidden.</summary>
     private async Task<(Vehicle Vehicle, AccessLevel Level)> EditableVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
-        var context = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }));
+        var context = (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct));
         return (context.Vehicle, context.Level);
     }
 
     private async Task<Refueling> EditableLogAsync(Guid id, bool includeDeleted, CancellationToken ct)
     {
         var refueling = includeDeleted ? await refuelings.FindIncludingDeletedAsync(id, ct) : await refuelings.FindAsync(id, ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(refueling?.VehicleId, ct),
-            () => new NotFoundException("refueling.notFound", $"Refuelling {id} does not exist.", new { Id = id }));
+        await guard.RequireEditAsync(await guard.ForVehicleAsync(refueling?.VehicleId, ct),
+            () => new NotFoundException("refueling.notFound", $"Refuelling {id} does not exist.", new { Id = id }), ct);
         return refueling!;
     }
 

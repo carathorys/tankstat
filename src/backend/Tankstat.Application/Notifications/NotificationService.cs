@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Tankstat.Application.Runs;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
@@ -15,7 +16,7 @@ namespace Tankstat.Application.Notifications;
 public sealed class NotificationService(
     AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, SyncNotificationSync parked, TyreReminderSync tyres, IOptionsSnapshot<NotificationOptions> options,
     TimeProvider clock,
-    ILogger<NotificationService> logger)
+    ILogger<NotificationService> logger, RunGateState? runs = null)
 {
     public const int DefaultTake = 20;
     public const int MaxTake = 100;
@@ -42,6 +43,8 @@ public sealed class NotificationService(
     private async Task<Principal> SyncedAsync(CancellationToken ct)
     {
         var me = await access.RequirePrincipalAsync(ct);
+        // A run (#335) holds SQLite's lock: the inbox is read as it is, and brought up to date by the next look after the run.
+        if (runs?.WritesLockedOut == true) return me;
         var due = await recurring.SyncAsync(ct);
         var waiting = await parked.SyncAsync(ct);
         var swaps = await tyres.SyncAsync(ct);

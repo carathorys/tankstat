@@ -84,6 +84,30 @@ public class RecognitionGraphQLTests
         throw new TimeoutException("The photo was not read.");
     }
 
+    /// <summary>The owner's decision 5 of #335: while a run is open the photo worker reads nothing (what it fills may be the run's), and goes on afterwards.</summary>
+    [Fact]
+    public async Task WhileARunIsOpen_NoPhotoIsRead_AndTheWaitingOnesAreReadOnceItEnded()
+    {
+        var provider = new FakeProvider();
+        using var app = WithReading(provider);
+        var (admin, vehicle) = await Signed(app);
+        var markers = app.Factory.Services.GetRequiredService<Tankstat.Application.Runs.IRunMarkerRepository>();
+        var state = app.Factory.Services.GetRequiredService<Tankstat.Application.Runs.RunGateState>();
+        var mark = Tankstat.Domain.Runs.RunMarker.Start(Guid.NewGuid(), [Guid.NewGuid()], DateTimeOffset.UtcNow); // another car's run
+        await markers.AddAsync(mark, default);
+        state.Forget();
+
+        var waiting = await UploadDraft(admin, vehicle);
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        Assert.Empty(provider.Requests);
+
+        await markers.EndAsync(mark.Id, Tankstat.Domain.Runs.RunEnd.Done, DateTimeOffset.UtcNow, default);
+        state.Forget();
+        var next = await UploadDraft(admin, vehicle); // wakes the worker, which otherwise looks again within its sweep
+        Assert.Equal("READ", (await ReadDraft(admin, waiting)).GetProperty("reading").GetProperty("status").GetString());
+        Assert.Equal("READ", (await ReadDraft(admin, next)).GetProperty("reading").GetProperty("status").GetString());
+    }
+
     [Fact]
     public async Task APhotoPickedForARefueling_IsReadOnTheServer_AndItsSureValuesComeBack()
     {

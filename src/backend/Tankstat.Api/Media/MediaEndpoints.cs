@@ -4,6 +4,7 @@ using Tankstat.Api.Auth;
 using Tankstat.Application;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
@@ -108,6 +109,21 @@ public static class MediaEndpoints
             http.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.Stream(content, "application/zip", fileDownloadName: file);
         });
+        // A person's export (#341): only for the person who made it (anyone else's looks non-existent), never cached.
+        media.MapGet("/exports/{id:guid}", async (Guid id, Tankstat.Application.Exports.ExportService exports, HttpContext http, CancellationToken ct) =>
+        {
+            var (content, name) = await exports.DownloadAsync(id, ct);
+            http.Response.Headers.CacheControl = "no-store";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            return Results.Stream(content, "application/zip", fileDownloadName: name);
+        });
+        // Whether it can be downloaded, asked by the page first: a file gone since (expired, replaced) is said on the page. Nothing is read.
+        media.MapMethods("/exports/{id:guid}", [HttpMethods.Head], async (Guid id, Tankstat.Application.Exports.ExportService exports, CancellationToken ct) =>
+        {
+            var (content, _) = await exports.DownloadAsync(id, ct);
+            await content.DisposeAsync();
+            return Results.Ok();
+        });
         // Whether a backup can be downloaded, asked by the page first: a refusal (a file gone since the list, a session that ended) is then
         // said on the page instead of replacing it. Nothing is read.
         media.MapMethods("/backups/{file}", [HttpMethods.Head], async (string file, BackupAdminService backups, CancellationToken ct) =>
@@ -185,7 +201,14 @@ public static class MediaEndpoints
     {
         try
         {
-            return await next(context);
+            try
+            {
+                return await next(context);
+            }
+            catch (Exception raw) when (raw is not KeyedException && context.HttpContext.RequestServices.GetRequiredService<IBusyFailures>().IsBusy(raw))
+            {
+                throw new BusyException(); // the database itself refused the save because a run holds it (#335)
+            }
         }
         catch (KeyedException e)
         {
@@ -194,6 +217,8 @@ public static class MediaEndpoints
                 UnauthenticatedException => StatusCodes.Status401Unauthorized,
                 ForbiddenException => StatusCodes.Status403Forbidden,
                 NotFoundException => StatusCodes.Status404NotFound,
+                // A run (#335) holds the car. Not 503: a client reads that as a server it cannot reach, and this one answered.
+                BusyException => StatusCodes.Status409Conflict,
                 _ when e.Key.EndsWith(".tooLarge", StringComparison.Ordinal) => StatusCodes.Status413PayloadTooLarge,
                 _ => StatusCodes.Status400BadRequest,
             };

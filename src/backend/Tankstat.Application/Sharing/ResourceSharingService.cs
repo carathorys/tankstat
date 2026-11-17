@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Notifications;
@@ -72,6 +73,34 @@ public sealed class ResourceSharingService(
         await NotifyAsync(vehicle, grantee, actor, before, level, ct);
     }
 
+    /// <summary>
+    /// A partial restore's way in (#340, <see cref="RunRestore"/>): a gone car's sharing as the backup had it, for the grantees who still
+    /// have an account (the caller passes only those), each written as it was. Nobody is told here: the restore's one notification per car
+    /// stands for these. Answers how many the car has again.
+    /// </summary>
+    public async Task<int> RestoreLogAccessAsync(Guid vehicleId, IReadOnlyList<(Guid UserId, AccessLevel Level)> granted, CancellationToken ct)
+    {
+        RunRestore.Require(await access.RequirePrincipalAsync(ct));
+        var vehicle = await ManageableVehicleAsync(vehicleId, ct);
+        // A purge leaves a car's grants behind (they name the car without a foreign key). The car comes back with the backup's sharing
+        // (#334's T10), exactly: a grant left behind for someone the backup did not share it with goes, one the backup has takes its level.
+        var wanted = granted.Where(g => g.UserId != vehicle.OwnerId && g.Level != AccessLevel.None).GroupBy(g => g.UserId).ToDictionary(g => g.Key, g => g.Last().Level);
+        foreach (var left in (await grants.ListForResourceAsync(ResourceType.Vehicle, vehicle.Id, ct)).Where(g => g.Feature == GrantedFeature.Logs))
+            if (!wanted.TryGetValue(left.GranteeId, out var level)) await grants.RemoveAsync(left, ct);
+            else
+            {
+                if (left.Level != level)
+                {
+                    left.ChangeLevel(level);
+                    await grants.UpdateAsync(left, ct);
+                }
+                wanted.Remove(left.GranteeId);
+            }
+        foreach (var (userId, level) in wanted)
+            await grants.AddAsync(ResourceGrant.Create(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, level), ct);
+        return granted.Where(g => g.UserId != vehicle.OwnerId && g.Level != AccessLevel.None).Select(g => g.UserId).Distinct().Count();
+    }
+
     private async Task NotifyAsync(Vehicle vehicle, User grantee, Principal actor, AccessLevel before, AccessLevel after, CancellationToken ct)
     {
         var car = NotificationRef.Vehicle(vehicle.Id);
@@ -91,6 +120,7 @@ public sealed class ResourceSharingService(
         var level = vehicle is null ? AccessLevel.None : await access.VehicleLevelAsync(vehicle, ct);
         if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
         if (level < AccessLevel.Edit) throw new ForbiddenException("share.editRequired", "You need edit access to the vehicle to share it.");
+        await access.WaitForRunsAsync(vehicle.Id, ct);
         return vehicle;
     }
 }

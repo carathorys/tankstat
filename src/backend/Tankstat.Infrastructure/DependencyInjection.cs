@@ -32,6 +32,8 @@ using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
 using Tankstat.Infrastructure.Persistence.Repositories;
+using Tankstat.Infrastructure.Persistence.Runs;
+using Tankstat.Application.Runs;
 
 namespace Tankstat.Infrastructure;
 
@@ -64,7 +66,9 @@ public static class DependencyInjection
             switch (db.Provider)
             {
                 case DatabaseProvider.Sqlite:
-                    builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations)).AddInterceptors(SqliteUnicodeLower.Instance);
+                    builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations))
+                        .AddInterceptors(SqliteUnicodeLower.Instance, new SqliteLock(sp.GetService<RunTimings>() ?? new RunTimings()),
+                            new SqliteLockTransactions(sp.GetService<RunTimings>() ?? new RunTimings()));
                     break;
                 case DatabaseProvider.PostgreSql: builder.UseNpgsql(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
                 case DatabaseProvider.SqlServer: builder.UseSqlServer(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
@@ -72,6 +76,16 @@ public static class DependencyInjection
                 default: throw new InvalidOperationException($"Unsupported database provider '{db.Provider}'.");
             }
         });
+
+        // Runs (#335): the factory everyone takes is the pooled one wrapped, so a run's contexts share its transaction.
+        var pooledFactory = services.Last(d => d.ServiceType == typeof(IDbContextFactory<AppDbContext>));
+        services.Remove(pooledFactory);
+        services.AddSingleton(sp => new RunDbContextFactory(
+            (IDbContextFactory<AppDbContext>)pooledFactory.ImplementationFactory!(sp), sp.GetRequiredService<DbContextOptions<AppDbContext>>()));
+        services.AddSingleton<IDbContextFactory<AppDbContext>>(sp => sp.GetRequiredService<RunDbContextFactory>());
+        services.AddSingleton<IRunScope, RunScope>();
+        services.AddSingleton<IRunMarkerRepository, RunMarkerRepository>();
+        services.AddSingleton<IBusyFailures, BusyFailures>();
 
         services.AddSingleton<IDatabaseProbe, EfDatabaseProbe>();
         services.AddSingleton<IFileProbe, FileProbe>(); // the telemetry certificate check of the settings page (#312)
@@ -159,6 +173,24 @@ public static class DependencyInjection
         services.AddSingleton<DatabaseMigrator>();
         services.AddHostedService(sp => sp.GetRequiredService<DatabaseMigrator>());
         services.AddHostedService(sp => sp.GetRequiredService<RestoreStep>());
+        services.AddSingleton<Backups.Reader.BackupImportSessions>(sp => new Backups.Reader.BackupImportSessions(
+            sp.GetRequiredService<IOptionsMonitor<Tankstat.Application.Imports.BackupImportOptions>>(), sp.GetRequiredService<TimeProvider>(),
+            sp.GetService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<Backups.Reader.BackupImportSessions>>()));
+        services.AddSingleton<Tankstat.Application.Imports.IBackupImportSessions>(sp => sp.GetRequiredService<Backups.Reader.BackupImportSessions>());
+        services.AddHostedService(sp => sp.GetRequiredService<Backups.Reader.BackupImportSessions>());
+        services.AddHostedService<RunMarkerSweep>(); // after the migrations and a restore: the marks it ends are today's
+        services.AddSingleton<Tankstat.Application.Imports.IImportRunRepository, Imports.ImportRunRepository>();
+        services.AddSingleton<Tankstat.Application.Imports.IImportTargetReader, Imports.ImportTargetReader>();
+        services.AddSingleton<Tankstat.Application.Imports.IRestoreStamps, Imports.RestoreStamps>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportWriter, Exports.ExportWriter>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportFiles, Exports.ExportFiles>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportFacts, Exports.ExportFacts>();
+        services.AddSingleton<Exports.ExportRunner>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportRunner>(sp => sp.GetRequiredService<Exports.ExportRunner>());
+        services.AddHostedService(sp => sp.GetRequiredService<Exports.ExportRunner>());
+        services.AddSingleton<Imports.BackupImportRunner>();
+        services.AddSingleton<Tankstat.Application.Imports.IBackupImportRunner>(sp => sp.GetRequiredService<Imports.BackupImportRunner>());
+        services.AddHostedService(sp => sp.GetRequiredService<Imports.BackupImportRunner>()); // after the marks' sweep: a run found running is judged by its mark
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<SetupStep>();
         services.AddHostedService<ModeChangeSignOut>();

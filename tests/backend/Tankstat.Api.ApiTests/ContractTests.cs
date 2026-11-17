@@ -143,6 +143,46 @@ public class ContractTests
     [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "recurringRows", "duplicateFuelRows", "duplicateExpenseRows", "duplicateRecurringRows", "firstDate", "lastDate", "categories", "issues")]
     [InlineData("ImportResultInfo", "vehicleId", "fuelImported", "expensesImported", "recurringImported", "fuelSkippedDuplicates", "expensesSkippedDuplicates", "recurringSkippedDuplicates", "errors")]
     [InlineData("ImportIssueInfo", "section", "row", "key", "args")]
+    [InlineData("Query", "backupImport", "canImportFromBackup")]
+    [InlineData("Mutation", "openBackupImport", "endBackupImport")]
+    [InlineData("BackupImportInfo", "token", "state", "triesLeft", "wrongKey", "file", "refusal")]
+    [InlineData("BackupFileInfo", "createdAt", "version", "isExport", "cars", "trashedCars")]
+    [InlineData("BackupCarInfo", "id", "name", "licensePlate", "fuelType", "distanceUnit", "volumeUnit", "ownerName", "refuelings", "expenses", "schedules", "ownerId", "ownerEmail")]
+    [InlineData("BackupImportRefusalInfo", "key", "args")]
+    [InlineData("Query", "backupImportCars", "backupImportReview", "backupImportEntries", "importRun", "myImportRun", "importRuns")]
+    [InlineData("Mutation", "startBackupImport", "cancelImportRun")]
+    [InlineData("Query", "carRestore", "restoreCars", "restorePeople", "restoreReview", "restoreEntries", "myRestoreRun")]
+    [InlineData("Mutation", "openCarRestore", "submitCarRestoreKey", "startCarRestore", "endCarRestore")]
+    [InlineData("Query", "canExport", "exportCars", "myExport", "exportPassphraseMinLength")]
+    [InlineData("Mutation", "startExport", "cancelExport", "deleteExport")]
+    [InlineData("ExportCarOfferInfo", "id", "name", "licensePlate", "refuelings", "expenses", "schedules", "tyreSets", "charts", "photos", "photoBytes", "pictureBytes", "rowBytes")]
+    [InlineData("ExportInfo", "id", "state", "carNames", "encrypted", "startedAt", "readyAt", "keptUntil", "deletedAt", "bytes", "failureKey", "progress", "largerThanImport", "importMaxMb", "downloadUrl", "kept")]
+    [InlineData("ExportProgressInfo", "car", "cars", "done", "total")]
+    [InlineData("RestoreCarPageInfo", "total", "cars", "owners")]
+    [InlineData("RestoreCarOfferInfo", "car", "state", "ownerIdHere", "ownerNameHere", "missingRefuelings", "missingExpenses", "missingSchedules", "missingTyreSets", "grants", "goneGrantees", "sameEmailUserId")]
+    [InlineData("RestoreOwnerInfo", "id", "name")]
+    [InlineData("RestorePersonInfo", "id", "name", "email")]
+    [InlineData("RestoreCarReviewInfo", "state", "ownerId", "ownerName", "access", "goneAccess")]
+    [InlineData("ImportRestoreReportInfo", "ownerId", "cameBack", "grants", "goneGrantees", "peopleLeftOut", "ownerName")]
+    [InlineData("ImportCarOffersInfo", "file", "cars", "targets")]
+    [InlineData("ImportCarOfferInfo", "car", "ownedByMe", "suggestedTargetId")]
+    [InlineData("ImportOwnCarInfo", "id", "name", "licensePlate", "distanceUnit", "volumeUnit")]
+    [InlineData("ImportCarReviewInfo", "carId", "name", "ownerName", "ownedByMe", "targetVehicleId", "targetName", "newRefuelings", "newExpenses", "newSchedules", "existingRefuelings", "existingExpenses", "existingSchedules", "differing", "inTrash", "kinds", "links", "linksLost", "tyres", "media", "restore")]
+    [InlineData("ImportMediaReviewInfo", "photosNew", "photosHere", "photosLeftOut", "picture", "targetPicture", "chartsNew", "chartsHere", "ownChartsNew", "dashboard", "targetDashboard", "ownDashboard", "targetOwnDashboard")]
+    [InlineData("ImportMediaReportInfo", "photos", "photosHere", "picture", "charts", "chartsHere", "dashboard", "ownDashboard", "tilesLeftOut")]
+    [InlineData("ImportTyreReviewInfo", "sets", "noSetLines", "noSetExpenses", "expenses")]
+    [InlineData("ImportSetOfferInfo", "id", "name", "season", "state", "installations", "lines", "tyres", "expenses", "refusalKey", "refusalArgs")]
+    [InlineData("ImportTyreReportInfo", "sets", "lines", "tyres", "noSetLines", "expenses", "amountsHere")]
+    [InlineData("ImportKindReviewInfo", "kind", "mode", "backup", "new", "differ", "same", "inTrash", "adds", "takes", "targetLive", "targetTrashed", "withPhotos", "onTyreLines", "photosLost")]
+    [InlineData("ImportEntryPageInfo", "total", "items")]
+    [InlineData("ImportEntryInfo", "id", "date", "odometer", "title", "amount", "currency", "volume", "differences")]
+    [InlineData("ImportFieldDifferenceInfo", "field", "backup", "target")]
+    [InlineData("ImportKindReportInfo", "kind", "mode", "imported", "changed", "deleted")]
+    [InlineData("ImportRunInfo", "id", "kind", "startedByName", "mine", "state", "failure", "queuedAt", "startedAt", "endedAt", "ahead", "progress", "cars", "report", "fileToken", "limitMinutes", "backupOf")]
+    [InlineData("ImportRunProgressInfo", "car", "cars", "done", "total")]
+    [InlineData("ImportRunCarInfo", "carId", "name", "targetVehicleId", "targetName")]
+    [InlineData("ImportCarReportInfo", "carId", "name", "vehicleId", "targetName", "asNew", "leftOut", "refuelings", "expenses", "schedules", "existing", "differing", "inTrash", "refused", "refusedMore", "kinds", "replacing", "links", "tyres", "media", "restore")]
+    [InlineData("ImportRefusedEntryInfo", "kind", "date", "title", "key", "args")]
     [InlineData("VehicleSummary", "lastFillUpDate", "latestOdometer", "averageConsumption", "currency", "thisMonthSpend", "lastMonthSpend", "spendTrend", "fillUpCount", "expenseCount", "spending", "trends")]
     [InlineData("DashboardTrends", "spending", "costPerDistance", "consumption", "distance")]
     [InlineData("CurrencyChange", "currency", "recent", "earlier")]
@@ -164,8 +204,8 @@ public class ContractTests
     [InlineData("FigureData", "recent", "earlier", "unit", "currencies", "value", "lastFillUp")]
     [InlineData("LastFillUpFigure", "date", "fillUps", "expenses")]
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "trend", "runningTotal", "compareYearEarlier", "secondMetric", "secondKind", "isShared", "createdAt", "canEdit", "canDelete", "createdBy")]
-    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "discount", "currency", "odometer", "pricePerUnit", "pricePerUnitBeforeDiscount", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto", "version", "updatedAt", "changedAt", "changedBy", "lastChange")]
-    [InlineData("Expense", "id", "amount", "discount", "currency", "odometer", "reviewState", "filledFromPhoto")]
+    [InlineData("Refueling", "id", "vehicleId", "createdBy", "createdByGone", "date", "volume", "totalCost", "discount", "currency", "odometer", "pricePerUnit", "pricePerUnitBeforeDiscount", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto", "version", "updatedAt", "changedAt", "changedBy", "lastChange")]
+    [InlineData("Expense", "id", "createdByGone", "amount", "discount", "currency", "odometer", "reviewState", "filledFromPhoto")]
     [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "surface", "timeFormat", "dateFormat", "defaultTimeFormat", "defaultDateFormat", "grids", "timeline")]
     [InlineData("TimelineSettingsInfo", "range", "layers", "hiddenSets")]
     [InlineData("GridSettingsInfo", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
@@ -177,6 +217,12 @@ public class ContractTests
     }
 
     [Theory]
+    [InlineData("OpenBackupImportInput", "token", "passphrase")]
+    [InlineData("StartBackupImportInput", "token", "cars")]
+    [InlineData("ImportCarChoiceInput", "carId", "targetVehicleId", "policy", "refuelings", "expenses", "schedules", "confirmedName", "tyres", "media")]
+    [InlineData("ImportMediaChoiceInput", "photos", "picture", "charts", "dashboard", "ownDashboard")]
+    [InlineData("ImportTyreChoiceInput", "sets", "noSetLines", "except")]
+    [InlineData("ImportKindChoiceInput", "mode", "addNew", "newExceptions", "takeBackups", "differExceptions")]
     [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "discount", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp", "id")]
     [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "discount", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "discount", "currency", "odometer", "note", "photoIds", "id", "tyre")]
@@ -285,8 +331,14 @@ public class ContractTests
     [InlineData("ChartSeriesRole", "VALUE", "MOVING_AVERAGE", "LINEAR", "YEAR_EARLIER")]
     [InlineData("ChartUnit", "CURRENCY", "VOLUME", "DISTANCE", "CONSUMPTION", "COUNT", "COST_PER_DISTANCE", "PRICE_PER_VOLUME")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
-    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "LOG_FILLED_FROM_PHOTO", "LOG_NOT_FILLED", "SYNC_CHANGE_PARKED", "MORE_ACTIVITY", "BACKUP_FAILED", "TYRE_SWAP_DUE")]
-    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER", "REFUELING", "EXPENSE", "SYNC_CHANGE", "TYRE_SET")]
+    [InlineData("ImportRunKind", "IMPORT", "RESTORE")]
+    [InlineData("ImportRunState", "WAITING", "RUNNING", "DONE", "NOT_FINISHED")]
+    [InlineData("ImportRunFailure", "FAILED", "CANCELLED", "TIMED_OUT", "INTERRUPTED", "DID_NOT_START")]
+    [InlineData("RefusedEntryPolicy", "IMPORT_THE_REST", "LEAVE_CAR_OUT")]
+    [InlineData("ImportKindMode", "ONLY_MISSING", "DONT_IMPORT", "REPLACE_ALL", "CHOOSE")]
+    [InlineData("ImportSetState", "NEW", "HERE", "REFUSED", "IN_TRASH")]
+    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "LOG_FILLED_FROM_PHOTO", "LOG_NOT_FILLED", "SYNC_CHANGE_PARKED", "MORE_ACTIVITY", "BACKUP_FAILED", "TYRE_SWAP_DUE", "IMPORT_FINISHED", "IMPORT_NOT_FINISHED", "IMPORT_CANCELLED", "CARS_IMPORTED", "RESTORE_FINISHED", "RESTORE_NOT_FINISHED", "RESTORE_CANCELLED", "CARS_RESTORED", "CAR_RESTORED", "EXPORT_READY", "EXPORT_FAILED", "CARS_EXPORTED")]
+    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER", "REFUELING", "EXPENSE", "SYNC_CHANGE", "TYRE_SET", "IMPORT_RUN", "EXPORT")]
     [InlineData("SyncChangeKind", "LOG_REFUELING", "UPDATE_REFUELING", "DELETE_REFUELING", "RESTORE_REFUELING", "ADD_EXPENSE", "UPDATE_EXPENSE", "DELETE_EXPENSE", "RESTORE_EXPENSE", "ADD_RECURRING_EXPENSE", "UPDATE_RECURRING_EXPENSE", "DELETE_RECURRING_EXPENSE", "MARK_RECURRING_EXPENSES_DONE", "ADD_VEHICLE", "UPDATE_VEHICLE", "DELETE_VEHICLE", "RESTORE_VEHICLE", "ADD_REFUELING_PHOTO", "REMOVE_REFUELING_PHOTO", "ADD_EXPENSE_PHOTO", "REMOVE_EXPENSE_PHOTO", "SET_VEHICLE_PICTURE", "REMOVE_VEHICLE_PICTURE", "ADD_TYRE_SET", "UPDATE_TYRE_SET", "SET_TYRE_ROUGH_DISTANCE", "RETIRE_TYRE_SET", "UNRETIRE_TYRE_SET", "DELETE_TYRE_SET", "RESTORE_TYRE_SET", "SWAP_TYRES", "CHANGE_TYRE_POSITIONS", "ADD_PAST_TYRE_SWAPS", "ADD_TYRE_INSTALLATION", "UPDATE_TYRE_INSTALLATION", "DELETE_TYRE_INSTALLATION", "RESTORE_TYRE_INSTALLATION", "ADD_TYRE_ENTRY", "UPDATE_TYRE_ENTRY", "DELETE_TYRE_ENTRY", "RESTORE_TYRE_ENTRY", "BREAK_UP_TYRE_SET", "UPDATE_TYRE", "DELETE_TYRE", "RESTORE_TYRE", "ADD_TYRE_PLACE", "UPDATE_TYRE_PLACE", "DELETE_TYRE_PLACE", "RESTORE_TYRE_PLACE", "REPLACE_TYRES", "DISMISS_TYRE_REMINDER", "RESTORE_TYRE_REMINDER")]
     [InlineData("TyreSeason", "SUMMER", "WINTER", "ALL_SEASON")]
     [InlineData("InstallationMeasure", "MEASURED", "FROM_FIRST_READING", "NOT_MEASURED")]
@@ -364,12 +416,26 @@ public class ContractTests
     [InlineData("mutation { holdBackup(file: \"tankstat-backup-20260101T000000Z.zip\", hold: false) }")]
     [InlineData("mutation { deleteBackup(file: \"tankstat-backup-20260101T000000Z.zip\") }")]
     [InlineData("{ backupDetails(file: \"tankstat-backup-20260101T000000Z.zip\") { file held } }")]
+    [InlineData("mutation { openCarRestore(file: \"tankstat-backup-20260101T000000Z.zip\") { token } }")]
+    [InlineData("{ restorePeople { id email } }")]
+    [InlineData("{ restoreCars(token: \"x\", skip: 0, take: 10) { total } }")]
+    [InlineData("{ myRestoreRun { id } }")]
     public async Task HoldingReleasingDeletingOrOpeningABackup_IsRefused_WithoutAnAdministrator(string operation)
     {
         // The contract server runs with sign-in off, where no administrator exists: the server itself refuses these, whatever the page shows.
         var body = await Query(operation);
 
         Assert.Equal("auth.adminRequired", body.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public async Task WithSignInOff_TheInstanceExports_AndAnExportOfNoCarIsRefused()
+    {
+        // Sign-in off (#341, the owner's decision 7): every car is the anonymous user's, so the Export tab offers them all.
+        Assert.True((await Query("{ canExport }")).GetProperty("data").GetProperty("canExport").GetBoolean());
+        Assert.Equal(JsonValueKind.Array, (await Query("{ exportCars { id name rowBytes } }")).GetProperty("data").GetProperty("exportCars").ValueKind);
+        var none = await Query("mutation { startExport(input: { cars: [] }) { id } }");
+        Assert.Equal("export.noCars", none.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
     }
 
     [Fact]

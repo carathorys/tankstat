@@ -1,10 +1,13 @@
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { graphql } from '../../support/graphql.ts'
 import { of } from 'rxjs'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createApolloClient, refreshLink } from '../../../src/apolloClient.ts'
 import { HealthDocument, SessionDocument } from '../../../src/gql/generated.ts'
+import { fetchSignedIn } from '../../../src/auth/refresh.ts'
+import { connectivity } from '../../../src/offline/connectivity.ts'
+import { isBusy } from '../../../src/offline/errors.ts'
 import { fakeInstance, gqlError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
 
@@ -167,4 +170,53 @@ it('a session answer that names no session, or no mode, is taken as it is, witho
   expect(none.data).toEqual({ session: null })
   expect(modeless.data).toEqual({ session: { user: null } })
   expect(refreshes).toBe(0)
+})
+
+it('a refresh the server cannot make because it is busy with a run (#335) makes the answer busy: nobody is signed out, the session is not asked again', async () => {
+  let sessions = 0
+  server.use(
+    graphql.query('Health', () => HttpResponse.json(signInFirst())),
+    graphql.query('Session', () => {
+      sessions++
+      return HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: { __typename: 'UserInfo', id: 'u1' }, instance: fakeInstance() }, notices: [] } })
+    }),
+    http.post('/auth/token/refresh', () => HttpResponse.json({ key: 'import.busy', args: {}, message: 'Busy.' }, { status: 409 })),
+  )
+  const client = createApolloClient('http://localhost/graphql')
+
+  const failure = await client.query({ query: HealthDocument, fetchPolicy: 'network-only' }).catch((e: unknown) => e)
+
+  expect(isBusy(failure)).toBe(true)
+  expect(connectivity.reachable).toBe(true)
+  expect(sessions).toBe(0)
+})
+
+it('an upload whose refresh is answered busy (#335) gets the busy answer, not "sign in first"', async () => {
+  server.use(
+    http.put('/media/me/avatar', () => HttpResponse.json({ key: 'auth.unauthenticated', args: {}, message: 'Sign in.' }, { status: 401 })),
+    http.post('/auth/token/refresh', () => HttpResponse.json({ key: 'import.busy', args: {}, message: 'Busy.' }, { status: 409 })),
+  )
+
+  const response = await fetchSignedIn('/media/me/avatar', { method: 'PUT' })
+
+  expect(response.status).toBe(409)
+  expect(((await response.json()) as { key: string }).key).toBe('import.busy')
+})
+
+it('uploads at the same moment whose one refresh is answered busy (#335) each read the busy answer', async () => {
+  let refreshes = 0
+  server.use(
+    http.put('/media/me/avatar', () => HttpResponse.json({ key: 'auth.unauthenticated', args: {}, message: 'Sign in.' }, { status: 401 })),
+    http.post('/auth/token/refresh', async () => {
+      refreshes++
+      await delay(50) // both uploads are answered "sign in first" before it is
+      return HttpResponse.json({ key: 'import.busy', args: {}, message: 'Busy.' }, { status: 409 })
+    }),
+  )
+
+  const responses = await Promise.all([fetchSignedIn('/media/me/avatar', { method: 'PUT' }), fetchSignedIn('/media/me/avatar', { method: 'PUT' })])
+
+  // The refresh is shared, and an answer's body is read once: each caller has a copy of its own.
+  expect(refreshes).toBe(1)
+  for (const response of responses) expect(((await response.json()) as { key: string }).key).toBe('import.busy')
 })

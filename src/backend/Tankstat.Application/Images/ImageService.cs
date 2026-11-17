@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Photos;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
@@ -55,11 +56,12 @@ public sealed class ImageService(
         logger.LogDebug("User {UserId} removed their avatar", user.Id);
     }
 
-    public Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
+    /// <param name="imageId">A partial restore's (#340): the backup's id, kept only with the backup's own bytes (a device keeps an image by its id).</param>
+    public Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct, Guid? imageId = null) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
-        var id = await StoreAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct);
+        var id = await StoreAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct, imageId);
 
         vehicle.SetPicture(id);
         await vehicles.UpdateAsync(vehicle, ct);
@@ -232,6 +234,7 @@ public sealed class ImageService(
         var level = vehicle is null ? AccessLevel.None : await access.VehicleLevelAsync(vehicle, ct);
         if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
         if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
+        await access.WaitForRunsAsync(vehicle.Id, ct);
         return vehicle;
     }
 
@@ -250,10 +253,16 @@ public sealed class ImageService(
     }
 
     /// <summary>Validates, then writes the file first and the row second; a failure in between removes the file again.</summary>
-    public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct)
+    /// <param name="id">A partial restore's (#340, <see cref="RunRestore"/>): the backup's id; one in use is <c>sync.idTaken</c>.</param>
+    public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct, Guid? id = null)
     {
         var contentType = ImageFormat.Detect(data.Span);
-        var image = StoredImage.Create(Guid.NewGuid(), contentType, data.Length, clock.GetUtcNow(), folder);
+        if (id is { } given)
+        {
+            RunRestore.Require(await access.RequirePrincipalAsync(ct));
+            if (await images.FindAsync(given, ct) is not null) throw new DomainException("sync.idTaken", $"The id {given} is already in use.", new { Id = given });
+        }
+        var image = StoredImage.Create(id ?? Guid.NewGuid(), contentType, data.Length, clock.GetUtcNow(), folder);
 
         await store.SaveAsync(image, data, ct);
         try
@@ -265,6 +274,14 @@ public sealed class ImageService(
             await store.DeleteAsync(image, ct);
             throw;
         }
+        // Inside a run (#339: an import's photos and picture) the row may still be rolled back: its file goes with it.
+        // A partial restore (#340) stores an image under the id of one a Replace all purged in the same run (the same file): rolled back,
+        // that row is back and keeps the file.
+        RunContext.Current?.Run?.OnRollback(async () =>
+        {
+            if (await images.FindAsync(image.Id, CancellationToken.None) is not { } back || back.Folder != image.Folder)
+                await store.DeleteAsync(image, CancellationToken.None);
+        });
         return image.Id;
     }
 
@@ -286,6 +303,15 @@ public sealed class ImageService(
     {
         if (id is null || await images.FindAsync(id.Value, ct) is not { } image) return;
         await images.RemoveAsync(image.Id, ct);
-        await store.DeleteAsync(image, ct);
+        // Inside a run (#339) the row's removal may still be rolled back: the file goes once the run commits, never before.
+        // A partial restore (#340) may store the same image again under its id after a Replace all's purge (the same log, the same
+        // folder, so the same file): the file stays then.
+        if (RunContext.Current?.Run is { } run)
+            run.AfterCommit(async () =>
+            {
+                if (await images.FindAsync(image.Id, CancellationToken.None) is not { } again || again.Folder != image.Folder)
+                    await store.DeleteAsync(image, CancellationToken.None);
+            });
+        else await store.DeleteAsync(image, ct);
     }
 }

@@ -23,6 +23,7 @@ fragment OfflineRefuelingFields on Refueling {
   deletedAt
   version
   updatedAt
+  createdByGone
   createdBy {
     id
     displayName
@@ -52,6 +53,7 @@ fragment OfflineExpenseFields on Expense {
   deletedAt
   version
   updatedAt
+  createdByGone
   createdBy {
     id
     displayName

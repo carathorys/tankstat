@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Sync;
 using Tankstat.Application.Telemetry;
 using Tankstat.Application.Users;
@@ -101,6 +102,8 @@ public static class SettingsCatalog
     [
         "Recognition:OpenAiCompatible:SystemPromptFile", // a path the app reads: the environment's business, like every other path
         "Backups:Path", // a folder, like Storage:Path: where the volume is, which the environment knows
+        "Imports:ScratchFolder", // a folder too: where an uploaded backup waits while cars are imported from it
+        "Exports:Folder", // a folder too: where a person's finished export waits for its download (#341)
     ];
 
     public static readonly IReadOnlyList<SettingDefinition> All =
@@ -164,6 +167,11 @@ public static class SettingsCatalog
         new(SettingsGroup.Backups, "Backups:Days", SettingKind.Days),
         new(SettingsGroup.Backups, "Backups:Keep", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:KeepDays", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Imports:BackupEnabled", SettingKind.Boolean),
+        new(SettingsGroup.Backups, "Imports:MaxUploadMb", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Exports:Enabled", SettingKind.Boolean),
+        new(SettingsGroup.Backups, "Exports:KeepHours", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Runs:LimitMinutes", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:Photos", SettingKind.Boolean),
         new(SettingsGroup.Backups, "Backups:Environment", SettingKind.Choice, Enum.GetNames<BackupEnvironmentMode>()),
         new(SettingsGroup.Backups, "Backups:Secrets", SettingKind.Boolean),
@@ -209,6 +217,9 @@ public static class SettingsCatalog
         (SyncOptions.SectionName, typeof(SyncOptions)),
         (RecognitionOptions.SectionName, typeof(RecognitionOptions)),
         (BackupOptions.SectionName, typeof(BackupOptions)),
+        (Tankstat.Application.Imports.BackupImportOptions.SectionName, typeof(Tankstat.Application.Imports.BackupImportOptions)),
+        (Exports.ExportOptions.SectionName, typeof(Exports.ExportOptions)),
+        (RunOptions.SectionName, typeof(RunOptions)),
         (TelemetryOptions.SectionName, typeof(TelemetryOptions)),
     ];
 

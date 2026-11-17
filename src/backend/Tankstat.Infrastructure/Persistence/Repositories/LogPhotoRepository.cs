@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Photos;
 using Tankstat.Domain.Photos;
+using Tankstat.Infrastructure.Persistence.Runs;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
@@ -30,11 +31,17 @@ internal sealed class LogPhotoRepository(IDbContextFactory<AppDbContext> dbFacto
         return await db.LogPhotos.AsNoTracking().FirstOrDefaultAsync(p => p.ImageId == imageId, ct);
     }
 
+    public async Task<LogPhoto?> FindAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.LogPhotos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+    }
+
     public async Task AddAsync(LogPhoto photo, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.LogPhotos.Add(photo);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.BeginInnerAsync(ct);
         await db.SaveChangesAsync(ct);
         await db.TouchLogAsync(photo.LogType, photo.LogId, clock.GetUtcNow(), ct); // a device shows the log with its photos
         await tx.CommitAsync(ct);
@@ -44,7 +51,7 @@ internal sealed class LogPhotoRepository(IDbContextFactory<AppDbContext> dbFacto
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.LogPhotos.Remove(photo);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.BeginInnerAsync(ct);
         await db.SaveChangesAsync(ct);
         await db.TouchLogAsync(photo.LogType, photo.LogId, clock.GetUtcNow(), ct);
         await tx.CommitAsync(ct);

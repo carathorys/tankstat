@@ -60,11 +60,12 @@ public sealed class VehicleChart
         Create(vehicleId, createdById, title, config, null, shared, now);
 
     /// <summary>A saved chart (<paramref name="config"/>) or key figure (<paramref name="figure"/>): exactly one of them (<c>chart.invalid</c>).</summary>
-    public static VehicleChart Create(Guid vehicleId, Guid createdById, string title, ChartConfig? config, FigureRecipe? figure, bool shared, DateTimeOffset now)
+    /// <param name="id">The backup's id, kept by a partial restore (#340); else a new one.</param>
+    public static VehicleChart Create(Guid vehicleId, Guid createdById, string title, ChartConfig? config, FigureRecipe? figure, bool shared, DateTimeOffset now, Guid? id = null)
     {
         var chart = new VehicleChart
         {
-            Id = Guid.NewGuid(), VehicleId = vehicleId, CreatedById = createdById, CreatedAt = now,
+            Id = EntityId.OrNew(id), VehicleId = vehicleId, CreatedById = createdById, CreatedAt = now,
             Widget = config is not null && figure is null ? WidgetKind.Chart : WidgetKind.Figure,
         };
         chart.Apply(title, config, figure, shared, now);

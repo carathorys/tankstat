@@ -303,6 +303,9 @@ it('shows the server, where its backups go, and every backup in the folder with 
   expect(within(rows[3]).getByText('Holds the database as an older release left it: brought up to date as it is restored.')).toBeInTheDocument()
   expect(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
   expect(within(rows[0]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
+  // Restore cars (#340) is offered where the full restore is, and opens its page on that file.
+  expect(within(rows[2]).queryByRole('link', { name: /^Restore cars/ })).not.toBeInTheDocument()
+  expect(within(rows[3]).getByRole('link', { name: /^Restore cars from the backup of/ })).toHaveAttribute('href', expect.stringMatching(/^\/admin\/backups\/restore\?file=/))
   await userEvent.setup().click(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ }))
   expect(await screen.findByRole('alertdialog')).toHaveAccessibleDescription(/holds the database as an older release left it \(the file was written by Tankstat 0\.9\.0\): the database is set up as that release left it/)
 })
@@ -317,6 +320,33 @@ it('backs up now, follows the run, and lists the new backup when it is written',
   expect(calls.RunBackup).toHaveLength(1)
   expect(calls.BackupRun?.length).toBeGreaterThan(0)
   await waitFor(() => expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(3)) // the overview asked again
+})
+
+it('shows the imports that go or wait only while there are any, each with its cancel', async () => {
+  backupsServer()
+  const run = { __typename: 'ImportRunInfo', id: 'r1', kind: 'IMPORT', startedByName: 'Bob', mine: false, state: 'RUNNING', failure: null, queuedAt: '2026-11-16T10:00:00Z', startedAt: '2026-11-16T10:01:00Z',
+    ahead: 0, fileToken: null, limitMinutes: 10, progress: { __typename: 'ImportRunProgressInfo', car: 1, cars: 1, done: 3, total: 9 }, cars: [{ __typename: 'ImportRunCarInfo', carId: 'c1', name: 'Octavia', targetName: null }], report: null }
+  let runs = [run]
+  const cancelled: string[] = []
+  server.use(
+    graphql.query('ImportRuns', () => HttpResponse.json({ data: { importRuns: runs } })),
+    graphql.mutation('CancelImportRun', ({ variables }) => {
+      cancelled.push(variables.id as string)
+      runs = []
+      return HttpResponse.json({ data: { cancelImportRun: true } })
+    }),
+  )
+  const ui = await openBackups()
+
+  const section = within(await screen.findByRole('region', { name: 'Imports' }))
+  expect(section.getByText('Shown only while an import runs or waits.')).toBeInTheDocument()
+  expect(section.getByText(/^An import started by Bob has been running since .* \(1 cars, 3 of 9 entries\)\.$/)).toBeInTheDocument()
+
+  await ui.click(section.getByRole('button', { name: 'Cancel it: Bob' }))
+  await ui.click(within(await screen.findByRole('alertdialog', { name: 'Cancel the import?' })).getByRole('button', { name: 'Cancel the import' }))
+
+  await waitFor(() => expect(cancelled).toEqual(['r1']))
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Imports' })).not.toBeInTheDocument()) // nothing goes or waits: no section
 })
 
 it('says why the last run failed, in words', async () => {

@@ -168,10 +168,28 @@ public sealed class ExpenseService(
     public async Task<int> CountDeletableTrashAsync(CancellationToken ct) =>
         await expenses.CountDeletedAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
 
+    /// <summary>
+    /// Deletes every expense of the vehicle for good, those in the trash too (#338: an import's <i>Replace all</i>). Needs Delete access to
+    /// the vehicle's logs. Their photos go with them (#339). While any of them belongs to a tyre log line, whose amount a backup cannot bring back to a set that stays, nothing is deleted
+    /// and it is refused (<c>import.replaceHeldBack</c>). Returns how many went.
+    /// </summary>
+    public async Task<int> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        var user = await access.RequirePrincipalAsync(ct);
+        var context = await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct), () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct);
+        if (context.Level < AccessLevel.Delete) throw new ForbiddenException(VehiclePurgeRefusals.NoDeleteKey, "You may not delete this vehicle's logs for good.");
+        var purged = await expenses.PurgeForVehicleAsync(vehicleId, ct);
+        if (purged.HeldBack) throw VehiclePurgeRefusals.HeldBack(purged);
+        await photos.DeleteImagesAsync(purged.Photos ?? [], ct); // inside a run their files go after the commit
+        logger.LogInformation("User {UserId} deleted every expense of vehicle {VehicleId} for good: {Count}", user.Id, vehicleId, purged.Deleted);
+        return purged.Deleted;
+    }
+
     /// <summary>Permanently removes the trashed expenses the user has Delete access to. Returns how many were removed.</summary>
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
         var user = await access.RequirePrincipalAsync(ct);
+        await access.WaitForRunsAsync(ct); // what is purged may be a run's (#335)
         var purged = await expenses.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
         await photos.DeleteFilesAsync(LogType.Expense, purged, ct); // their photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the expense trash: {Count} expenses deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);
@@ -202,14 +220,14 @@ public sealed class ExpenseService(
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
     private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct) =>
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
+        (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct)).Vehicle;
 
     private async Task<Expense> EditableAsync(Guid id, bool includeDeleted, CancellationToken ct)
     {
         var expense = includeDeleted ? await expenses.FindIncludingDeletedAsync(id, ct) : await expenses.FindAsync(id, ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(expense?.VehicleId, ct),
-            () => new NotFoundException("expense.notFound", $"Expense {id} does not exist.", new { Id = id }));
+        await guard.RequireEditAsync(await guard.ForVehicleAsync(expense?.VehicleId, ct),
+            () => new NotFoundException("expense.notFound", $"Expense {id} does not exist.", new { Id = id }), ct);
         return expense!;
     }
 

@@ -105,6 +105,26 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         return new PurgedLogs(doomed.Count, doomed.Where(e => withPhotos.Contains(e.Id)).Select(e => (e.VehicleId, e.Id)).ToList());
     }
 
+    public async Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        // Only a tyre log line holds a purge back now (#339, the owner's answer: photos come back with their entries, tyre amounts would not).
+        var onLines = await db.CountExpensesOnTyreLinesAsync(vehicleId, ct);
+        if (onLines > 0) return new VehiclePurge(0, 0, onLines);
+        var photos = await db.LogPhotos.Where(p => p.LogType == LogType.Expense && p.VehicleId == vehicleId).ToListAsync(ct);
+        db.LogPhotos.RemoveRange(photos);
+        // Tracked and removed one by one, never a bulk delete: the tombstones the devices follow are written from the change tracker.
+        var doomed = await WithLinks(db.Expenses.IgnoreQueryFilters()).Where(e => e.VehicleId == vehicleId).ToListAsync(ct);
+        // The schedules an expense covered are linked without a foreign key on the expense side (see RecurringCompletionConfiguration).
+        db.RecurringCompletions.RemoveRange(await db.RecurringCompletions
+            .Where(c => db.Expenses.IgnoreQueryFilters().Any(e => e.Id == c.ExpenseId && e.VehicleId == vehicleId)).ToListAsync(ct));
+        db.Expenses.RemoveRange(doomed);
+        db.OdometerReadings.RemoveRange(doomed.Where(e => e.OdometerReading is not null).Select(e => e.OdometerReading!));
+        db.Costs.RemoveRange(doomed.Where(e => e.Cost is not null).Select(e => e.Cost!));
+        await db.SaveChangesAsync(ct);
+        return new VehiclePurge(doomed.Count, 0, 0, [.. photos.Select(p => p.ImageId)]);
+    }
+
     private static IQueryable<Expense> Trashed(AppDbContext db, OwnerScope scope) =>
         WithLinks(db.Expenses.IgnoreQueryFilters()).Where(e => e.DeletedAt != null).InScope(scope, e => e.VehicleId);
 

@@ -538,6 +538,8 @@ export interface FakeRefueling {
   canEdit: boolean
   canDelete: boolean
   createdBy: Person
+  /** Who logged it has no account any more (#340); left out: false. */
+  createdByGone?: boolean
   deletedAt?: string
   reviewState: 'NONE' | 'AWAITING_PHOTOS' | 'NEEDS_REVIEW' | 'INCOMPLETE'
   filledFromPhoto: ('ODOMETER' | 'VOLUME' | 'TOTAL' | 'DISCOUNT')[]
@@ -560,6 +562,7 @@ export const fakeRefueling = (over: Partial<FakeRefueling> = {}): FakeRefueling 
   consumption: null,
   canEdit: true,
   canDelete: false,
+  createdByGone: false,
   createdBy: person('Alice'),
   reviewState: 'NONE',
   filledFromPhoto: [],
@@ -853,6 +856,8 @@ export interface FakeExpense {
   canEdit: boolean
   canDelete: boolean
   createdBy: Person
+  /** Who logged it has no account any more (#340); left out: false. */
+  createdByGone?: boolean
   deletedAt?: string
   reviewState: 'NONE' | 'AWAITING_PHOTOS' | 'NEEDS_REVIEW' | 'INCOMPLETE'
   filledFromPhoto: ('ODOMETER' | 'VOLUME' | 'TOTAL' | 'DISCOUNT')[]
@@ -876,6 +881,7 @@ export const fakeExpense = (over: Partial<FakeExpense> = {}): FakeExpense => ({
   note: null,
   canEdit: true,
   canDelete: false,
+  createdByGone: false,
   createdBy: person('Alice'),
   reviewState: 'NONE',
   filledFromPhoto: [],

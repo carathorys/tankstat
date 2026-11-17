@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Vehicles;
 
@@ -11,10 +12,20 @@ namespace Tankstat.Application.Access;
 /// </summary>
 public sealed class AccessService(
     ICurrentUser current, IOptions<AuthOptions> auth, IAccessGrantRepository grants, IAccessSettingsRepository settings,
-    IResourceGrantRepository resourceGrants)
+    IResourceGrantRepository resourceGrants, RunGate? runs = null)
 {
+    /// <summary>
+    /// Before a change to a car is made: waits while a run (#335) holds the car, then refuses as busy. Every door that changes a car or what
+    /// belongs to it calls this once access is settled (<see cref="LogAccessGuard.RequireEditAsync"/>, the car's own edit, its picture, its sharing).
+    /// </summary>
+    public Task WaitForRunsAsync(Guid vehicleId, CancellationToken ct) => runs?.WaitAsync(vehicleId, ct) ?? Task.CompletedTask;
+
+    /// <summary>The same before a change that is not about one car (emptying a trash, deleting a user with their cars): while any run is open.</summary>
+    public Task WaitForRunsAsync(CancellationToken ct) => runs?.WaitForAllAsync(ct) ?? Task.CompletedTask;
+
     public async Task<Principal> RequirePrincipalAsync(CancellationToken ct)
     {
+        if (RunContext.Current is { } run) return run.Starter; // a run (#335) has no request: the services act as whoever started it
         if (await current.GetPrincipalAsync(ct) is { } principal) return principal;
         if (auth.Value.Mode == AuthMode.None) return Principal.Anonymous;
         throw new UnauthenticatedException();
@@ -118,6 +129,20 @@ public sealed class AccessService(
             var level = AccessPolicy.Resolve(principal.Id, principal.IsAdmin, v.OwnerId, defaults, granted);
             return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)logGrants.GetValueOrDefault(v.Id));
         });
+    }
+
+    /// <summary>
+    /// <see cref="LogLevelAsync"/> as another person has it (#340: a partial restore brings someone's private charts and own dashboard only
+    /// when they can see the car afterwards): an administrator or the owner everything, else the larger of the instance default, their
+    /// grant from the owner and the car's log grant.
+    /// </summary>
+    public async Task<AccessLevel> LogLevelOfAsync(Guid userId, bool isAdmin, Vehicle vehicle, CancellationToken ct)
+    {
+        if (isAdmin || userId == vehicle.OwnerId) return AccessLevel.Delete;
+        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
+        var level = AccessPolicy.Resolve(userId, false, vehicle.OwnerId, defaults, await grants.ListForGranteeAsync(userId, ct));
+        var grant = await resourceGrants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct);
+        return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)(grant?.Level ?? AccessLevel.None));
     }
 
     private async Task<AccessLevel> LogGrantAsync(Guid vehicleId, CancellationToken ct)

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Photos;
@@ -32,10 +33,16 @@ public sealed class LogPhotoService(
     private static readonly StripedLocks Locks = new();
 
     /// <summary>Stores the picture (JPEG, PNG or WebP) as a new photo of the log and returns its image id.</summary>
-    public async Task<Guid> AddAsync(LogType logType, Guid logId, ReadOnlyMemory<byte> data, CancellationToken ct)
+    /// <param name="restored">A partial restore's (#340, <see cref="RunRestore"/>): the backup's photo and image ids.</param>
+    public async Task<Guid> AddAsync(LogType logType, Guid logId, ReadOnlyMemory<byte> data, CancellationToken ct, (Guid PhotoId, Guid ImageId)? restored = null)
     {
         var log = await logs.EditableAsync(logType, logId, ct);
         var principal = await access.RequirePrincipalAsync(ct);
+        if (restored is { } ids)
+        {
+            RunRestore.Require(principal);
+            if (await photos.FindAsync(ids.PhotoId, ct) is not null) throw new DomainException("sync.idTaken", $"The id {ids.PhotoId} is already in use.", new { Id = ids.PhotoId });
+        }
 
         var gate = Locks.For(logId);
         await gate.WaitAsync(ct);
@@ -43,11 +50,11 @@ public sealed class LogPhotoService(
         {
             if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog) throw TooMany();
 
-            var imageId = await images.StoreAsync(data, ImageFolders.LogPhotos(log.Vehicle.Id, logType, logId), ct);
+            var imageId = await images.StoreAsync(data, ImageFolders.LogPhotos(log.Vehicle.Id, logType, logId), ct, restored?.ImageId);
             LogPhoto? inserted = null;
             try
             {
-                var photo = LogPhoto.Create(log.Vehicle.OwnerId, log.Vehicle.Id, logType, logId, imageId, principal.Id, clock.GetUtcNow());
+                var photo = LogPhoto.Create(log.Vehicle.OwnerId, log.Vehicle.Id, logType, logId, imageId, principal.Id, clock.GetUtcNow(), restored?.PhotoId);
                 await photos.AddAsync(photo, ct);
                 inserted = photo;
 
@@ -214,6 +221,9 @@ public sealed class LogPhotoService(
         await images.DeleteAsync([imageId], ct);
         logger.LogDebug("Photo {ImageId} removed from {LogType} {LogId}", imageId, logType, logId);
     }
+
+    /// <summary>Deletes photos' images, rows and files, by image id (#339: a car's logs of one kind deleted for good); inside a run the files go after the commit.</summary>
+    public Task DeleteImagesAsync(IEnumerable<Guid> imageIds, CancellationToken ct) => images.DeleteAsync(imageIds, ct);
 
     /// <summary>Removes the files of the photos of logs that were deleted for good (their rows went with the logs).</summary>
     public Task DeleteFilesAsync(LogType logType, PurgedLogs purged, CancellationToken ct) =>

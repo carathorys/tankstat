@@ -1,0 +1,91 @@
+# Restore cars (#340): an administrator puts chosen cars of a restore point back as they were. The file's state, the review, the
+# Choose dialog's pages and the run are the import's (import.graphql) in its restore way.
+
+query CarRestore($token: String!) {
+  carRestore(token: $token) {
+    ...BackupImportFields
+  }
+}
+
+mutation OpenCarRestore($file: String!) {
+  openCarRestore(file: $file) {
+    ...BackupImportFields
+  }
+}
+
+mutation SubmitCarRestoreKey($input: CarRestoreKeyInput!) {
+  submitCarRestoreKey(input: $input) {
+    ...BackupImportFields
+  }
+}
+
+mutation EndCarRestore($token: String!) {
+  endCarRestore(token: $token)
+}
+
+query RestoreCars($token: String!, $search: String, $ownerId: UUID, $skip: Int!, $take: Int!) {
+  restoreCars(token: $token, search: $search, ownerId: $ownerId, skip: $skip, take: $take) {
+    total
+    owners {
+      id
+      name
+    }
+    cars {
+      state
+      ownerIdHere
+      ownerNameHere
+      missingRefuelings
+      missingExpenses
+      missingSchedules
+      missingTyreSets
+      grants
+      goneGrantees
+      sameEmailUserId
+      car {
+        id
+        name
+        licensePlate
+        ownerId
+        ownerName
+        ownerEmail
+        distanceUnit
+        volumeUnit
+        refuelings
+        expenses
+        schedules
+      }
+    }
+  }
+}
+
+query RestorePeople {
+  restorePeople {
+    id
+    name
+    email
+  }
+}
+
+query RestoreReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
+  restoreReview(token: $token, cars: $cars) {
+    ...ImportCarReviewFields
+  }
+}
+
+query RestoreEntries($token: String!, $carId: UUID!, $kind: String!, $differing: Boolean!, $skip: Int!, $take: Int!, $tyres: ImportTyreChoiceInput) {
+  restoreEntries(token: $token, carId: $carId, kind: $kind, differing: $differing, skip: $skip, take: $take, tyres: $tyres) {
+    ...ImportEntryPageFields
+  }
+}
+
+query MyRestoreRun {
+  myRestoreRun {
+    ...ImportRunFields
+  }
+}
+
+mutation StartCarRestore($input: StartCarRestoreInput!) {
+  startCarRestore(input: $input) {
+    ...ImportRunFields
+  }
+}

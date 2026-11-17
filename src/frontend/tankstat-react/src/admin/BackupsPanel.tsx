@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react'
+import { ImportRunsSection } from './ImportRuns.tsx'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Link from '@mui/material/Link'
@@ -9,7 +10,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { Archive, DatabaseBackup, Download, FolderOpen, Image, ImageOff, KeyRound, LifeBuoy, Lock, LockKeyholeOpen, LockOpen, Pin, PinOff, RotateCcw, Trash2, Upload, type LucideIcon } from 'lucide-react'
+import { Archive, CarFront, DatabaseBackup, Download, FolderOpen, Image, ImageOff, KeyRound, LifeBuoy, Lock, LockKeyholeOpen, LockOpen, Pin, PinOff, RotateCcw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
@@ -66,6 +67,7 @@ export function BackupsPanel() {
     <Stack sx={{ gap: 3 }}>
       <Overview backups={backups} />
       <RunNow initial={backups.run} onFinished={() => void refetch()} />
+      <ImportRunsSection />
       <UploadBackup maxUploadMb={backups.settings.maxUploadMb} onUploaded={() => void refetch()} />
       <RestorePoints
         backups={backups}
@@ -478,6 +480,20 @@ function RestorePoints({
                         <Download size={16} aria-hidden />
                         {t('admin.backups.download')}
                       </Button>
+                      {/* Restore cars (#340): offered where the full restore is (a backup this release can read). */}
+                      {(p.sameMigration || p.olderMigration) && (
+                        <Button
+                          component={RouterLink}
+                          to={`/admin/backups/restore?file=${encodeURIComponent(p.file)}`}
+                          size="small"
+                          variant="soft"
+                          disabled={busy}
+                          aria-label={t('admin.backups.restoreCarsAria', { made, file: p.file })}
+                        >
+                          <CarFront size={16} aria-hidden />
+                          {t('restore.action')}
+                        </Button>
+                      )}
                       {(p.sameMigration || p.olderMigration) && (
                         <RestoreDialog
                           point={p}

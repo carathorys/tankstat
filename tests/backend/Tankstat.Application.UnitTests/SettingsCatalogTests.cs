@@ -29,6 +29,9 @@ public class SettingsCatalogTests
         (typeof(RecognitionOptions), RecognitionOptions.SectionName),
         (typeof(Tankstat.Application.Backups.BackupOptions), Tankstat.Application.Backups.BackupOptions.SectionName),
         (typeof(TelemetryOptions), TelemetryOptions.SectionName),
+        (typeof(Tankstat.Application.Imports.BackupImportOptions), Tankstat.Application.Imports.BackupImportOptions.SectionName),
+        (typeof(Tankstat.Application.Runs.RunOptions), Tankstat.Application.Runs.RunOptions.SectionName),
+        (typeof(Tankstat.Application.Exports.ExportOptions), Tankstat.Application.Exports.ExportOptions.SectionName),
     ];
 
     [Fact]
@@ -187,6 +190,9 @@ public class SettingsCatalogTests
     [InlineData("Recognition:Provider", "None")]
     [InlineData("Recognition:MinConfidence", "0.6")] // invariantly, whatever the server's culture
     [InlineData("Recognition:OpenAiCompatible:TimeoutSeconds", "120")]
+    [InlineData("Runs:LimitMinutes", "10")] // #335: a section of its own, shown under Backups
+    [InlineData("Imports:MaxUploadMb", "200")] // #336: a section of its own, shown under Backups
+    [InlineData("Imports:BackupEnabled", "true")]
     [InlineData("Logging:LogLevel:Default", "Information")] // the framework's, when no source sets the default category
     [InlineData(OtelSettings.Protocol, "grpc")] // the SDK's
     [InlineData(OtelSettings.ServiceName, "tankstat")] // the app's, which it names the service itself when nothing does

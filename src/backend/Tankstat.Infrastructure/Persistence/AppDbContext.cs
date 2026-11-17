@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
+using Tankstat.Infrastructure.Persistence.Runs;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Instance;
 using Tankstat.Domain.Charts;
@@ -10,6 +12,7 @@ using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Runs;
 using Tankstat.Domain.Settings;
 using Tankstat.Domain.Sync;
 using Tankstat.Domain.Users;
@@ -34,6 +37,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             throw ChangedMeanwhile(synced);
         }
+        catch (Exception e) when (SqliteLock.IsBusy(e))
+        {
+            throw new BusyException(); // a run (#335) holds SQLite's lock: the save waited its time and is to be tried again
+        }
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -46,6 +53,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             throw ChangedMeanwhile(synced);
         }
+        catch (Exception e) when (SqliteLock.IsBusy(e))
+        {
+            throw new BusyException(); // a run (#335) holds SQLite's lock: the save waited its time and is to be tried again
+        }
     }
 
     /// <summary>A versioned entity that was saved meanwhile; other entities' concurrency failures (a row gone) are their repositories' business.</summary>
@@ -55,6 +66,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         new("sync.versionMismatch", "It was changed meanwhile.", new { Expected = entity.SavedVersion });
 
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+    public DbSet<RunMarker> RunMarkers => Set<RunMarker>();
+    public DbSet<Tankstat.Domain.Imports.ImportRun> ImportRuns => Set<Tankstat.Domain.Imports.ImportRun>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Tyres;
@@ -65,6 +66,22 @@ public sealed class VehicleService(
         return vehicle;
     }
 
+    /// <summary>
+    /// A partial restore's way in (#340, <see cref="RunRestore"/>): a car that is gone comes back under its own id, to its owner (the backup's,
+    /// or the one the administrator picked when that owner has no account). Its entries, added afterwards, take their owner from it. An id
+    /// another car has (one here, or in the trash) is refused: <c>sync.idTaken</c>.
+    /// </summary>
+    public async Task<Vehicle> RestoreAsync(Guid id, Guid ownerId, string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, CancellationToken ct)
+    {
+        var admin = await access.RequirePrincipalAsync(ct);
+        RunRestore.Require(admin);
+        if (await vehicles.FindIncludingDeletedAsync(id, ct) is not null) throw new DomainException("sync.idTaken", $"The id {id} is already in use.", new { Id = id });
+        var vehicle = Vehicle.Create(ownerId, name, licensePlate, fuelType, units, id);
+        if (!await vehicles.AddAsync(vehicle, ct)) throw new DomainException("sync.idTaken", $"The id {id} is already in use.", new { Id = id });
+        logger.LogDebug("Administrator {UserId} restored vehicle {VehicleId} to user {OwnerId}", admin.Id, vehicle.Id, ownerId);
+        return vehicle;
+    }
+
     /// <param name="expectedVersion">The version the change was made from; refused when the vehicle was saved since (see <see cref="VersionCheck"/>).</param>
     public async Task<Vehicle> UpdateAsync(
         Guid id, string name, string? licensePlate, FuelType fuelType, MeasurementUnits? newUnits, CancellationToken ct, int? expectedVersion = null)
@@ -122,6 +139,7 @@ public sealed class VehicleService(
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
         var user = await access.RequirePrincipalAsync(ct);
+        await access.WaitForRunsAsync(ct); // what is purged may be a run's (#335)
         var purged = await vehicles.PurgeAsync(await access.ScopeAsync(AccessLevel.Delete, ct), ct);
         await images.DeleteVehicleFilesAsync(purged.VehicleIds, purged.ImageIds, ct); // their pictures and photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the vehicle trash: {Count} vehicles deleted for good ({VehicleIds})", user.Id, purged.Count, Listed(purged.VehicleIds));
@@ -146,6 +164,7 @@ public sealed class VehicleService(
         var level = vehicle is null ? AccessLevel.None : await access.VehicleLevelAsync(vehicle, ct);
         if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {id} does not exist.", new { Id = id });
         if (level < AccessLevel.Edit) throw new Auth.ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
+        await access.WaitForRunsAsync(vehicle.Id, ct);
         return vehicle;
     }
 }

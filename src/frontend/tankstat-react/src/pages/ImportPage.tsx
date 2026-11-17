@@ -14,16 +14,20 @@ import Typography from '@mui/material/Typography'
 import { AlertTriangle, FileUp } from 'lucide-react'
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
 import { CurrencyInput } from '../forms/CurrencyInput.tsx'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import {
+  CanExportDocument,
+  CanImportFromBackupDocument,
   ConfirmImportDocument,
   ImportPreviewDocument,
+  ImportRunDocument,
   ImportTargetsDocument,
+  MyImportRunDocument,
   VehicleDefaultsDocument,
   type ConfirmImportMutation,
   type DistanceUnit,
@@ -38,8 +42,11 @@ import { ErrorMessage, SuccessMessage } from '../messages.tsx'
 import { uploadImportFile } from '../pictures/uploadFile.ts'
 import { FUEL_TYPES } from '../vehicles.ts'
 import { Loading } from '../components/Loading.tsx'
+import { BackupImport, type BackupStep } from './import/BackupImport.tsx'
+import { ExportTab } from './import/ExportTab.tsx'
+import { TabbedPanels } from '../components/TabbedPanels.tsx'
 
-const FORMATS = ['fuelio'] as const
+const FORMATS = ['fuelio', 'tankstat'] as const
 type Format = (typeof FORMATS)[number]
 type Preview = ImportPreviewQuery['importPreview']
 type Issue = Preview['issues'][number]
@@ -47,73 +54,168 @@ type Result = ConfirmImportMutation['confirmImport']
 type Step = 'file' | 'target' | 'review' | 'done'
 
 const STEPS: Step[] = ['file', 'target', 'review', 'done']
+/** A Tankstat backup or export has cars to pick where another app's file has one target (#337). */
+const BACKUP_STEPS: BackupStep[] = ['file', 'cars', 'review', 'done']
 const MAX_ISSUES_SHOWN = 20
 
-/** Import fuel logs and expenses from another app: choose a file, choose the target, review what will happen, then confirm. */
+type PageTab = 'import' | 'export'
+
+/**
+ * Import and export (#341): the Import tab (another app's file, or a Tankstat backup or export) and the Export tab (the person's own cars as
+ * a file), chosen by `?tab=`. While exporting is off for the person the page is Import alone, as it was; `?run=` always opens the Import tab.
+ */
 export function ImportPage() {
   const { t } = useTranslation()
-  usePageTitle(t('import.title'))
-  const [step, setStep] = useState<Step>('file')
-  const [token, setToken] = useState<string>()
-  const [result, setResult] = useState<Result>()
-
-  const current = STEPS.indexOf(step)
+  const [params, setParams] = useSearchParams()
+  const canExport = useQuery(CanExportDocument).data?.canExport === true
+  const title = canExport ? t('export.pageTitle') : t('import.title')
+  usePageTitle(title)
+  const tab: PageTab = canExport && params.get('tab') === 'export' && params.get('run') === null ? 'export' : 'import'
   return (
     <section aria-labelledby="page-title">
       <Typography id="page-title" component="h1" variant="h3" sx={{ mb: 1 }}>
-        {t('import.title')}
+        {title}
       </Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
-        {t('import.intro')}
-      </Typography>
-      {/* An ordered list: a screen reader hears the step's place; the current one is marked. */}
-      <Stepper activeStep={current} aria-label={t('import.title')} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1 }}>
-        {STEPS.map((s, i) => (
-          <Step key={s} completed={i < current || step === 'done'} aria-current={s === step ? 'step' : undefined}>
-            <StepLabel>{t(`import.steps.${s}`)}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
-
-      {step === 'file' && (
-        <FileStep
-          onRead={(next) => {
-            setToken(next)
-            setStep('target')
-          }}
+      {canExport ? (
+        <TabbedPanels
+          label={t('export.tabs.label')}
+          value={tab}
+          onChange={(next) => setParams(next === 'import' ? {} : { tab: next }, { replace: true })}
+          tabs={[
+            { value: 'import', label: t('export.tabs.import'), content: () => <ImportTab /> },
+            { value: 'export', label: t('export.tabs.export'), content: () => <ExportTab /> },
+          ]}
         />
-      )}
-      {step !== 'file' && step !== 'done' && token && (
-        <TargetAndReview
-          token={token}
-          step={step}
-          onStep={setStep}
-          onDone={(r) => {
-            setResult(r)
-            setStep('done')
-          }}
-        />
-      )}
-      {step === 'done' && result && (
-        <DoneStep
-          result={result}
-          onAnother={() => {
-            setToken(undefined)
-            setResult(undefined)
-            setStep('file')
-          }}
-        />
+      ) : (
+        <ImportTab />
       )}
     </section>
   )
 }
 
+/** Import fuel logs and expenses from another app: choose a file, choose the target, review what will happen, then confirm. */
+function ImportTab() {
+  const { t } = useTranslation()
+  const [params, setParams] = useSearchParams()
+  const [format, setFormat] = useState<Format>('fuelio')
+  const [step, setStep] = useState<Step>('file')
+  const [backupStep, setBackupStep] = useState<BackupStep>() // none until a step is taken here: a run that is found opens at its own
+  const [token, setToken] = useState<string>()
+  const [result, setResult] = useState<Result>()
+  // A backup or an export is a source for whoever may import from one (the instance's switch; administrators always).
+  const allowed = useQuery(CanImportFromBackupDocument).data?.canImportFromBackup === true
+  // A run of this person that goes or waits is shown when the page opens, and a run's report by its id (from its notification).
+  const asked = params.get('run')
+  const mine = useQuery(MyImportRunDocument, { fetchPolicy: 'network-only', skip: asked !== null })
+  const byId = useQuery(ImportRunDocument, { variables: { id: asked ?? '' }, fetchPolicy: 'network-only', skip: asked === null })
+  const myRun = mine.data?.myImportRun ?? undefined
+  const myRunGoes = myRun?.state === 'WAITING' || myRun?.state === 'RUNNING'
+  // Once found going it stays this page's run when it ends: the cache follows the run as it is asked about, and its report shows here.
+  const [goingId, setGoingId] = useState<string>()
+  if (myRun && myRunGoes && goingId !== myRun.id) setGoingId(myRun.id) // kept while rendering: no render in between shows the file step
+  const going = myRun && (myRunGoes || myRun.id === goingId) ? myRun : undefined
+  const [left, setLeft] = useState(false) // the run that was found was left for another file
+  const found = left ? undefined : asked !== null ? (byId.data?.importRun ?? undefined) : going
+  const backup = found !== undefined || format === 'tankstat'
+  const shownStep: BackupStep = backupStep ?? (found === undefined ? 'file' : found.state === 'DONE' || found.state === 'NOT_FINISHED' ? 'done' : 'review')
+
+  const steps = backup ? BACKUP_STEPS : STEPS
+  const current = backup ? BACKUP_STEPS.indexOf(shownStep) : STEPS.indexOf(step)
+  const finished = backup ? shownStep === 'done' : step === 'done'
+  // A report by its link is waited for; whether a run of the person's is going is not (the file step shows meanwhile, as it always did).
+  const waiting = asked !== null && byId.loading
+  return (
+    <div>
+      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
+        {t('import.intro')}
+      </Typography>
+      {/* An ordered list: a screen reader hears the step's place; the current one is marked. */}
+      <Stepper activeStep={current} aria-label={t('import.title')} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1 }}>
+        {steps.map((s, i) => (
+          <Step key={s} completed={i < current || finished} aria-current={i === current ? 'step' : undefined}>
+            <StepLabel>{t(`import.steps.${s}`)}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
+
+      {waiting && <Loading />}
+      {!waiting && asked !== null && !found && !left && (
+        <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
+          <ErrorMessage>{t('import.run.gone')}</ErrorMessage>
+          <Button size="large" variant="soft" onClick={() => setParams({}, { replace: true })}>
+            {t('import.run.another')}
+          </Button>
+        </Stack>
+      )}
+      {!waiting && (asked === null || found || left) && (
+        <>
+          {!found && (backup ? shownStep : step) === 'file' && (
+            <Box sx={{ mb: 2 }}>
+              <LabeledSelect
+                label={t('import.file.format')}
+                value={format}
+                onChange={(next) => {
+                  setFormat(next)
+                  setBackupStep(undefined)
+                }}
+                options={FORMATS.filter((f) => f !== 'tankstat' || allowed).map((f) => ({ value: f, label: t(`import.file.formats.${f}`) }))}
+              />
+            </Box>
+          )}
+          {backup && (
+            <BackupImport
+              key={found?.id ?? 'new'}
+              step={shownStep}
+              onStep={setBackupStep}
+              run={found}
+              onAnother={() => {
+                setLeft(true)
+                setBackupStep(undefined)
+                if (asked !== null) setParams({}, { replace: true })
+              }}
+            />
+          )}
+          {!backup && step === 'file' && (
+            <FileStep
+              format={format}
+              onRead={(next) => {
+                setToken(next)
+                setStep('target')
+              }}
+            />
+          )}
+          {!backup && step !== 'file' && step !== 'done' && token && (
+            <TargetAndReview
+              token={token}
+              step={step}
+              onStep={setStep}
+              onDone={(r) => {
+                setResult(r)
+                setStep('done')
+              }}
+            />
+          )}
+          {!backup && step === 'done' && result && (
+            <DoneStep
+              result={result}
+              onAnother={() => {
+                setToken(undefined)
+                setResult(undefined)
+                setStep('file')
+              }}
+            />
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ---- 1. the file ---------------------------------------------------------------------------------------------
 
-function FileStep({ onRead }: { onRead: (token: string) => void }) {
+function FileStep({ format, onRead }: { format: Format; onRead: (token: string) => void }) {
   const { t } = useTranslation()
   const input = useRef<HTMLInputElement>(null)
-  const [format, setFormat] = useState<Format>('fuelio')
   const [file, setFile] = useState<File>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
@@ -135,7 +237,6 @@ function FileStep({ onRead }: { onRead: (token: string) => void }) {
   return (
     <form onSubmit={submit}>
       <Stack sx={{ gap: 2, alignItems: 'flex-start' }}>
-        <LabeledSelect label={t('import.file.format')} value={format} onChange={setFormat} options={FORMATS.map((f) => ({ value: f, label: t(`import.file.formats.${f}`) }))} />
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {t('import.file.fuelioHint')}
         </Typography>

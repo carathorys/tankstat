@@ -55,6 +55,25 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   LogAccess: 'onlineOnly',
   ImportTargets: 'onlineOnly',
   ImportPreview: 'onlineOnly',
+  BackupImport: 'onlineOnly', // an uploaded backup's opening (#336): the server's own, asked afresh every time
+  CanImportFromBackup: 'onlineOnly',
+  BackupImportCars: 'onlineOnly',
+  BackupImportReview: 'onlineOnly',
+  BackupImportEntries: 'onlineOnly',
+  ImportRun: 'onlineOnly',
+  MyImportRun: 'onlineOnly',
+  // Restore cars (#340): an administrator's, on a file of the server's; nothing to keep on a device.
+  CarRestore: 'onlineOnly',
+  RestoreCars: 'onlineOnly',
+  RestorePeople: 'onlineOnly',
+  RestoreReview: 'onlineOnly',
+  RestoreEntries: 'onlineOnly',
+  MyRestoreRun: 'onlineOnly',
+  // Export my data (#341): a file being built on the server and its record; nothing to keep on a device.
+  CanExport: 'onlineOnly',
+  ExportCars: 'onlineOnly',
+  MyExport: 'onlineOnly',
+  ImportRuns: 'onlineOnly',
   MySessions: 'onlineOnly',
   OfflineEstimates: 'onlineOnly',
   ParkedChanges: 'onlineOnly', // deciding about them needs the server anyway

@@ -58,3 +58,300 @@ mutation ConfirmImport($input: ConfirmImportInput!) {
     }
   }
 }
+
+# Importing cars from a Tankstat backup or export (#336): the file is uploaded with POST /imports/tankstat (which answers its token);
+# how its opening stands is asked here, again while it is OPENING (a large file takes longer than a request may).
+fragment BackupImportFields on BackupImportInfo {
+  token
+  state
+  triesLeft
+  wrongKey
+  refusal {
+    key
+    args
+  }
+  file {
+    createdAt
+    version
+    isExport
+    trashedCars
+    cars {
+      id
+      name
+      licensePlate
+      ownerName
+      refuelings
+      expenses
+      schedules
+    }
+  }
+}
+
+query BackupImport($token: String!) {
+  backupImport(token: $token) {
+    ...BackupImportFields
+  }
+}
+
+mutation OpenBackupImport($input: OpenBackupImportInput!) {
+  openBackupImport(input: $input) {
+    ...BackupImportFields
+  }
+}
+
+mutation EndBackupImport($token: String!) {
+  endBackupImport(token: $token)
+}
+
+# The steps after the file (#337): the cars it offers, the review, the run and its report.
+query CanImportFromBackup {
+  canImportFromBackup
+}
+
+query BackupImportCars($token: String!) {
+  backupImportCars(token: $token) {
+    file {
+      createdAt
+      version
+      trashedCars
+    }
+    cars {
+      ownedByMe
+      suggestedTargetId
+      car {
+        id
+        name
+        licensePlate
+        ownerName
+        distanceUnit
+        volumeUnit
+        refuelings
+        expenses
+        schedules
+      }
+    }
+    targets {
+      id
+      name
+      licensePlate
+      distanceUnit
+      volumeUnit
+    }
+  }
+}
+
+fragment ImportEntryPageFields on ImportEntryPageInfo {
+  total
+  items {
+    id
+    date
+    odometer
+    title
+    amount
+    currency
+    volume
+    differences {
+      field
+      backup
+      target
+    }
+  }
+}
+
+# A page of the Choose dialog (#338): one kind's entries that are only in the backup, or (differing) that differ from the car's.
+query BackupImportEntries($token: String!, $carId: UUID!, $targetVehicleId: UUID!, $kind: String!, $differing: Boolean!, $skip: Int!, $take: Int!, $tyres: ImportTyreChoiceInput) {
+  backupImportEntries(token: $token, carId: $carId, targetVehicleId: $targetVehicleId, kind: $kind, differing: $differing, skip: $skip, take: $take, tyres: $tyres) {
+    ...ImportEntryPageFields
+  }
+}
+
+fragment ImportCarReviewFields on ImportCarReviewInfo {
+  carId
+  name
+  ownerName
+  ownedByMe
+  targetVehicleId
+  targetName
+  newRefuelings
+  newExpenses
+  newSchedules
+  existingRefuelings
+  existingExpenses
+  existingSchedules
+  differing
+  inTrash
+  links
+  linksLost
+  media {
+    photosNew
+    photosHere
+    photosLeftOut
+    picture
+    targetPicture
+    chartsNew
+    chartsHere
+    ownChartsNew
+    dashboard
+    targetDashboard
+    ownDashboard
+    targetOwnDashboard
+  }
+  tyres {
+    expenses
+    noSetLines
+    noSetExpenses
+    sets {
+      id
+      name
+      season
+      state
+      installations
+      lines
+      tyres
+      expenses
+      refusalKey
+      refusalArgs
+    }
+  }
+  kinds {
+    kind
+    mode
+    backup
+    new
+    differ
+    same
+    inTrash
+    adds
+    takes
+    targetLive
+    targetTrashed
+    withPhotos
+    onTyreLines
+    photosLost
+  }
+  restore {
+    state
+    ownerId
+    ownerName
+    access
+    goneAccess
+  }
+}
+
+query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
+  backupImportReview(token: $token, cars: $cars) {
+    ...ImportCarReviewFields
+  }
+}
+
+fragment ImportRunFields on ImportRunInfo {
+  backupOf
+  id
+  kind
+  startedByName
+  mine
+  state
+  failure
+  queuedAt
+  startedAt
+  ahead
+  fileToken
+  limitMinutes
+  progress {
+    car
+    cars
+    done
+    total
+  }
+  cars {
+    carId
+    name
+    targetName
+  }
+  report {
+    carId
+    name
+    vehicleId
+    targetName
+    asNew
+    leftOut
+    refuelings
+    expenses
+    schedules
+    existing
+    differing
+    inTrash
+    replacing
+    links
+    media {
+      photos
+      photosHere
+      picture
+      charts
+      chartsHere
+      dashboard
+      ownDashboard
+      tilesLeftOut
+    }
+    restore {
+      ownerId
+      cameBack
+      grants
+      goneGrantees
+      peopleLeftOut
+      ownerName
+    }
+    tyres {
+      sets
+      lines
+      tyres
+      noSetLines
+      expenses
+      amountsHere
+    }
+    kinds {
+      kind
+      mode
+      imported
+      changed
+      deleted
+    }
+    refusedMore
+    refused {
+      kind
+      date
+      title
+      key
+      args
+    }
+  }
+}
+
+query ImportRun($id: UUID!) {
+  importRun(id: $id) {
+    ...ImportRunFields
+  }
+}
+
+query MyImportRun {
+  myImportRun {
+    ...ImportRunFields
+  }
+}
+
+# Administrators: every import that goes or waits.
+query ImportRuns {
+  importRuns {
+    ...ImportRunFields
+  }
+}
+
+mutation StartBackupImport($input: StartBackupImportInput!) {
+  startBackupImport(input: $input) {
+    ...ImportRunFields
+  }
+}
+
+mutation CancelImportRun($id: UUID!) {
+  cancelImportRun(id: $id)
+}
