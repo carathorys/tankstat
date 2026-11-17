@@ -153,7 +153,7 @@ public class ContractTests
     [InlineData("Mutation", "startBackupImport", "cancelImportRun")]
     [InlineData("Query", "carRestore", "restoreCars", "restorePeople", "restoreReview", "restoreEntries", "myRestoreRun")]
     [InlineData("Mutation", "openCarRestore", "submitCarRestoreKey", "startCarRestore", "endCarRestore")]
-    [InlineData("Query", "canExport", "exportCars", "myExport")]
+    [InlineData("Query", "canExport", "exportCars", "myExport", "exportPassphraseMinLength")]
     [InlineData("Mutation", "startExport", "cancelExport", "deleteExport")]
     [InlineData("ExportCarOfferInfo", "id", "name", "licensePlate", "refuelings", "expenses", "schedules", "tyreSets", "charts", "photos", "photoBytes", "pictureBytes", "rowBytes")]
     [InlineData("ExportInfo", "id", "state", "carNames", "encrypted", "startedAt", "readyAt", "keptUntil", "deletedAt", "bytes", "failureKey", "progress", "largerThanImport", "importMaxMb", "downloadUrl", "kept")]

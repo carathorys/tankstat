@@ -69,6 +69,10 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   RestoreReview: 'onlineOnly',
   RestoreEntries: 'onlineOnly',
   MyRestoreRun: 'onlineOnly',
+  // Export my data (#341): a file being built on the server and its record; nothing to keep on a device.
+  CanExport: 'onlineOnly',
+  ExportCars: 'onlineOnly',
+  MyExport: 'onlineOnly',
   ImportRuns: 'onlineOnly',
   MySessions: 'onlineOnly',
   OfflineEstimates: 'onlineOnly',

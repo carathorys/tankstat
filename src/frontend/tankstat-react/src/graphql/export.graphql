@@ -1,0 +1,69 @@
+# Export my data (#341): a person's own cars as a file, built in the background and kept for a while; the Export tab of the Import and
+# export page, and the Export this car dialog on a car's Details tab.
+
+fragment ExportFileFields on ExportInfo {
+  id
+  state
+  carNames
+  encrypted
+  startedAt
+  readyAt
+  keptUntil
+  deletedAt
+  bytes
+  failureKey
+  largerThanImport
+  importMaxMb
+  downloadUrl
+  progress {
+    car
+    cars
+    done
+    total
+  }
+}
+
+query CanExport {
+  canExport
+}
+
+query ExportCars {
+  exportCars {
+    id
+    name
+    licensePlate
+    refuelings
+    expenses
+    schedules
+    tyreSets
+    charts
+    photos
+    photoBytes
+    pictureBytes
+    rowBytes
+  }
+  exportPassphraseMinLength
+}
+
+query MyExport {
+  myExport {
+    ...ExportFileFields
+    kept {
+      ...ExportFileFields
+    }
+  }
+}
+
+mutation StartExport($input: StartExportInput!) {
+  startExport(input: $input) {
+    ...ExportFileFields
+  }
+}
+
+mutation CancelExport {
+  cancelExport
+}
+
+mutation DeleteExport {
+  deleteExport
+}

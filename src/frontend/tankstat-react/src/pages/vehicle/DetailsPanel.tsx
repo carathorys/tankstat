@@ -19,6 +19,7 @@ import { undoTrash } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
 import { useToast } from '../../toast/toastContext.ts'
 import { VehicleFormDialog } from '../../VehicleFormDialog.tsx'
+import { ExportCarButton } from './ExportCarDialog.tsx'
 
 type Vehicle = NonNullable<VehicleDetailsQuery['vehicle']>
 
@@ -68,7 +69,7 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
 
       {vehicle.canEdit && (
         <>
-          <div>
+          <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
             <VehicleFormDialog
               vehicleId={vehicle.id}
               trigger={
@@ -78,7 +79,8 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
               }
               onSubmit={(input) => changes.update(vehicle.id, vehicle.version, { ...input, id: vehicle.id }, () => updateVehicle({ variables: { input: { ...input, id: vehicle.id } } }))}
             />
-          </div>
+            <ExportCarButton vehicleId={vehicle.id} />
+          </Stack>
           <section aria-labelledby="picture-heading">
             <Typography component="h2" variant="h5" id="picture-heading" sx={{ mb: 1.5 }}>
               {t('columns.picture')}

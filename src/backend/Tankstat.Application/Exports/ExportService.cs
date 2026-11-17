@@ -94,6 +94,13 @@ public sealed class ExportService(
         return me;
     }
 
+    /// <summary>The shortest passphrase an export takes (the backups' rule, <c>Backups:PassphraseMinLength</c>), for the form's hint.</summary>
+    public async Task<int> PassphraseMinLengthAsync(CancellationToken ct)
+    {
+        await RequireExporterAsync(ct);
+        return Math.Max(backups.Value.PassphraseMinLength, BackupPassphrase.Floor);
+    }
+
     /// <summary>The person's own cars (with sign-in off every car), what each holds and what its photos and picture add.</summary>
     public async Task<IReadOnlyList<ExportCarOffer>> CarsAsync(CancellationToken ct)
     {

@@ -27,7 +27,8 @@
     "serverSettings": "Server settings",
     "adminOverview": "Overview",
     "people": "People",
-    "backups": "Backups"
+    "backups": "Backups",
+    "importExport": "Import and export"
   },
   "language": {
     "label": "Language",
@@ -3636,5 +3637,87 @@
       "needsSince": "Fill in In use since first.",
       "working": "Working it out…"
     }
+  },
+  "export": {
+    "pageTitle": "Import and export",
+    "tabs": {
+      "label": "Import or export",
+      "import": "Import",
+      "export": "Export"
+    },
+    "intro": "Export your own cars as a file that the Import tab reads back, here or on another Tankstat.",
+    "choose": "Choose what to export",
+    "everything": "Everything of this car is exported.",
+    "kinds": {
+      "refuelings": "Refuellings",
+      "expenses": "Expenses",
+      "schedules": "Recurring expenses",
+      "tyres": "Tyres",
+      "charts": "Saved charts and dashboards",
+      "photos": "Photos of entries",
+      "picture": "The car's picture"
+    },
+    "counts": {
+      "refuelings_one": "{{count}} refuelling",
+      "refuelings_other": "{{count}} refuellings",
+      "expenses_one": "{{count}} expense",
+      "expenses_other": "{{count}} expenses",
+      "schedules_one": "{{count}} recurring expense",
+      "schedules_other": "{{count}} recurring expenses",
+      "tyreSets_one": "{{count}} tyre set",
+      "tyreSets_other": "{{count}} tyre sets",
+      "charts_one": "{{count}} chart",
+      "charts_other": "{{count}} charts",
+      "photos_one": "{{count}} photo",
+      "photos_other": "{{count}} photos",
+      "sets_one": "{{count}} set",
+      "sets_other": "{{count}} sets"
+    },
+    "adds": "adds {{size}}",
+    "passphrase": "Passphrase (optional)",
+    "passphraseRepeat": "Repeat the passphrase",
+    "passphraseHint": "With a passphrase the file is encrypted; you type it again when you import the file. Left empty, the file is a plain zip anyone can read.",
+    "passphraseMin": "At least {{min}} characters.",
+    "notes": "What is in the trash is not exported. Sharing is not part of the file.",
+    "total_one": "{{count}} car · about {{size}}",
+    "total_other": "{{count}} cars · about {{size}}",
+    "export": "Export",
+    "noCar": "Tick at least one car.",
+    "noKind": "Tick at least one kind for {{car}}.",
+    "building": "Building your export…",
+    "buildingCar": "car {{car}} of {{cars}}",
+    "buildingPhotos": "{{done}} of {{total}} photos",
+    "leave": "You can leave this page: a notification tells you when it is ready.",
+    "cancel": "Cancel the export",
+    "cancelConfirm": "Cancel the export?",
+    "cancelText": "Nothing is kept.",
+    "ready": "Your export is ready.",
+    "fileCars_one": "{{count}} car",
+    "fileCars_other": "{{count}} cars",
+    "encrypted": "encrypted",
+    "plain": "not encrypted",
+    "keptUntil": "kept until {{time}}",
+    "download": "Download",
+    "delete": "Delete it",
+    "deleteConfirm": "Delete the export?",
+    "deleteText": "The file is removed from the server.",
+    "again": "Export again",
+    "againText": "A new export replaces this file.",
+    "replacesKept": "An export of yours is kept until {{time}}. This one replaces it.",
+    "replacesBuilding": "An export of yours is being built. This one replaces it.",
+    "tooLarge": "This file is larger than this server accepts as an import ({{maxMb}} MB). It can be imported where that limit is higher, or ask an administrator here.",
+    "failed": "The export could not be built: {{reason}} Nothing was kept.",
+    "cancelled": "The export was cancelled.",
+    "interrupted": "The export did not finish: the server restarted while it was built.",
+    "keptEarlier": "Your earlier export is still kept.",
+    "expired": "Your export is no longer kept: it was deleted {{time}}.",
+    "noCars": "You have no cars of your own to export. Cars shared with you belong to their owners and are exported by them.",
+    "car": {
+      "button": "Export this car",
+      "title": "Export {{car}}",
+      "description": "A file of this car that the Import page reads back, here or on another Tankstat."
+    },
+    "started": "The export is being built.",
+    "open": "Open Import and export"
   }
 }

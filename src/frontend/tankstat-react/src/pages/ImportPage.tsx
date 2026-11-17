@@ -21,6 +21,7 @@ import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import {
+  CanExportDocument,
   CanImportFromBackupDocument,
   ConfirmImportDocument,
   ImportPreviewDocument,
@@ -42,6 +43,8 @@ import { uploadImportFile } from '../pictures/uploadFile.ts'
 import { FUEL_TYPES } from '../vehicles.ts'
 import { Loading } from '../components/Loading.tsx'
 import { BackupImport, type BackupStep } from './import/BackupImport.tsx'
+import { ExportTab } from './import/ExportTab.tsx'
+import { TabbedPanels } from '../components/TabbedPanels.tsx'
 
 const FORMATS = ['fuelio', 'tankstat'] as const
 type Format = (typeof FORMATS)[number]
@@ -55,10 +58,44 @@ const STEPS: Step[] = ['file', 'target', 'review', 'done']
 const BACKUP_STEPS: BackupStep[] = ['file', 'cars', 'review', 'done']
 const MAX_ISSUES_SHOWN = 20
 
-/** Import fuel logs and expenses from another app: choose a file, choose the target, review what will happen, then confirm. */
+type PageTab = 'import' | 'export'
+
+/**
+ * Import and export (#341): the Import tab (another app's file, or a Tankstat backup or export) and the Export tab (the person's own cars as
+ * a file), chosen by `?tab=`. While exporting is off for the person the page is Import alone, as it was; `?run=` always opens the Import tab.
+ */
 export function ImportPage() {
   const { t } = useTranslation()
-  usePageTitle(t('import.title'))
+  const [params, setParams] = useSearchParams()
+  const canExport = useQuery(CanExportDocument).data?.canExport === true
+  const title = canExport ? t('export.pageTitle') : t('import.title')
+  usePageTitle(title)
+  const tab: PageTab = canExport && params.get('tab') === 'export' && params.get('run') === null ? 'export' : 'import'
+  return (
+    <section aria-labelledby="page-title">
+      <Typography id="page-title" component="h1" variant="h3" sx={{ mb: 1 }}>
+        {title}
+      </Typography>
+      {canExport ? (
+        <TabbedPanels
+          label={t('export.tabs.label')}
+          value={tab}
+          onChange={(next) => setParams(next === 'import' ? {} : { tab: next }, { replace: true })}
+          tabs={[
+            { value: 'import', label: t('export.tabs.import'), content: () => <ImportTab /> },
+            { value: 'export', label: t('export.tabs.export'), content: () => <ExportTab /> },
+          ]}
+        />
+      ) : (
+        <ImportTab />
+      )}
+    </section>
+  )
+}
+
+/** Import fuel logs and expenses from another app: choose a file, choose the target, review what will happen, then confirm. */
+function ImportTab() {
+  const { t } = useTranslation()
   const [params, setParams] = useSearchParams()
   const [format, setFormat] = useState<Format>('fuelio')
   const [step, setStep] = useState<Step>('file')
@@ -88,10 +125,7 @@ export function ImportPage() {
   // A report by its link is waited for; whether a run of the person's is going is not (the file step shows meanwhile, as it always did).
   const waiting = asked !== null && byId.loading
   return (
-    <section aria-labelledby="page-title">
-      <Typography id="page-title" component="h1" variant="h3" sx={{ mb: 1 }}>
-        {t('import.title')}
-      </Typography>
+    <div>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
         {t('import.intro')}
       </Typography>
@@ -173,7 +207,7 @@ export function ImportPage() {
           )}
         </>
       )}
-    </section>
+    </div>
   )
 }
 

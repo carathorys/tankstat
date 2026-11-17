@@ -54,6 +54,7 @@ export const server = setupServer(
   graphql.query('OfflineVehicles', () => HttpResponse.json({ data: { myVehicles: [] } })),
   // Importing from a backup (#337): not offered, no run of the person's, none for the administrators' lists (its tests answer these themselves).
   graphql.query('CanImportFromBackup', () => HttpResponse.json({ data: { canImportFromBackup: false } })),
+  graphql.query('CanExport', () => HttpResponse.json({ data: { canExport: false } })), // exporting off unless a test turns it on (#341)
   graphql.query('MyImportRun', () => HttpResponse.json({ data: { myImportRun: null } })),
   graphql.query('ImportRuns', () => HttpResponse.json({ data: { importRuns: [] } })),
   graphql.query('OfflineEstimates', () => HttpResponse.json({ data: { myVehicles: [] } })),

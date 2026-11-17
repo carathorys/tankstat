@@ -44,6 +44,9 @@ public sealed class ExportQueries
         [.. (await exports.CarsAsync(ct)).Select(c => new ExportCarOfferInfo(c.Id, c.Name, c.LicensePlate, c.Refuelings, c.Expenses, c.Schedules, c.TyreSets, c.Charts,
             c.Photos, c.PhotoBytes, c.PictureBytes, c.RowBytes))];
 
+    /// <summary>The shortest passphrase an export takes (the backups' rule).</summary>
+    public Task<int> GetExportPassphraseMinLength([Service] ExportService exports, CancellationToken ct) => exports.PassphraseMinLengthAsync(ct);
+
     /// <summary>The person's export under way, ready, or how the last one ended; null when there is none.</summary>
     public async Task<ExportInfo?> GetMyExport([Service] ExportService exports, CancellationToken ct) =>
         await exports.MineAsync(ct) is { } v ? ExportInfo.From(v) : null;

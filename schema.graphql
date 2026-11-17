@@ -142,6 +142,7 @@ type Query {
   myRestoreRun: ImportRunInfo @cost(weight: "10")
   canExport: Boolean! @cost(weight: "10")
   exportCars: [ExportCarOfferInfo!]! @cost(weight: "10")
+  exportPassphraseMinLength: Int! @cost(weight: "10")
   myExport: ExportInfo @cost(weight: "10")
   vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
     @cost(weight: "10")

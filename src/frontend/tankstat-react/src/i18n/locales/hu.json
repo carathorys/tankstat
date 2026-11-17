@@ -27,7 +27,8 @@
     "serverSettings": "Szerverbeállítások",
     "adminOverview": "Áttekintés",
     "people": "Felhasználók",
-    "backups": "Mentések"
+    "backups": "Mentések",
+    "importExport": "Importálás és exportálás"
   },
   "language": {
     "label": "Nyelv",
@@ -3636,5 +3637,87 @@
       "needsSince": "Előbb töltsd ki a Használatban ettől mezőt.",
       "working": "Számolás…"
     }
+  },
+  "export": {
+    "pageTitle": "Importálás és exportálás",
+    "tabs": {
+      "label": "Importálás vagy exportálás",
+      "import": "Importálás",
+      "export": "Exportálás"
+    },
+    "intro": "Exportáld a saját autóidat egy fájlba, amelyet az Importálás fül vissza tud olvasni, itt vagy egy másik Tankstaton.",
+    "choose": "Válaszd ki, mit exportálsz",
+    "everything": "Az autó minden adata exportálva lesz.",
+    "kinds": {
+      "refuelings": "Tankolások",
+      "expenses": "Kiadások",
+      "schedules": "Ismétlődő kiadások",
+      "tyres": "Gumik",
+      "charts": "Mentett diagramok és irányítópultok",
+      "photos": "A bejegyzések fényképei",
+      "picture": "Az autó képe"
+    },
+    "counts": {
+      "refuelings_one": "{{count}} tankolás",
+      "refuelings_other": "{{count}} tankolás",
+      "expenses_one": "{{count}} kiadás",
+      "expenses_other": "{{count}} kiadás",
+      "schedules_one": "{{count}} ismétlődő kiadás",
+      "schedules_other": "{{count}} ismétlődő kiadás",
+      "tyreSets_one": "{{count}} gumiszett",
+      "tyreSets_other": "{{count}} gumiszett",
+      "charts_one": "{{count}} diagram",
+      "charts_other": "{{count}} diagram",
+      "photos_one": "{{count}} fénykép",
+      "photos_other": "{{count}} fénykép",
+      "sets_one": "{{count}} szett",
+      "sets_other": "{{count}} szett"
+    },
+    "adds": "+{{size}}",
+    "passphrase": "Jelmondat (nem kötelező)",
+    "passphraseRepeat": "Jelmondat újra",
+    "passphraseHint": "Jelmondattal a fájl titkosított; importáláskor újra be kell írnod. Üresen hagyva a fájl sima zip, amelyet bárki elolvashat.",
+    "passphraseMin": "Legalább {{min}} karakter.",
+    "notes": "Ami a kukában van, nem kerül exportálásra. A megosztás nem része a fájlnak.",
+    "total_one": "{{count}} autó · kb. {{size}}",
+    "total_other": "{{count}} autó · kb. {{size}}",
+    "export": "Exportálás",
+    "noCar": "Jelölj be legalább egy autót.",
+    "noKind": "Jelölj be legalább egy fajtát a(z) {{car}} autóhoz.",
+    "building": "Az export készül…",
+    "buildingCar": "{{car}}. autó a(z) {{cars}}-ból",
+    "buildingPhotos": "{{done}} / {{total}} fénykép",
+    "leave": "Elhagyhatod az oldalt: értesítés jön, ha elkészült.",
+    "cancel": "Exportálás megszakítása",
+    "cancelConfirm": "Megszakítod az exportálást?",
+    "cancelText": "Semmi nem marad meg.",
+    "ready": "Az exportod elkészült.",
+    "fileCars_one": "{{count}} autó",
+    "fileCars_other": "{{count}} autó",
+    "encrypted": "titkosított",
+    "plain": "nem titkosított",
+    "keptUntil": "eddig őrizzük: {{time}}",
+    "download": "Letöltés",
+    "delete": "Törlés",
+    "deleteConfirm": "Törlöd az exportot?",
+    "deleteText": "A fájl lekerül a szerverről.",
+    "again": "Újabb export",
+    "againText": "Az új export felváltja ezt a fájlt.",
+    "replacesKept": "Egy exportodat eddig őrizzük: {{time}}. Ez felváltja.",
+    "replacesBuilding": "Egy exportod éppen készül. Ez felváltja.",
+    "tooLarge": "Ez a fájl nagyobb, mint amit ez a szerver importként elfogad ({{maxMb}} MB). Ott importálható, ahol ez a korlát magasabb, vagy kérj meg itt egy adminisztrátort.",
+    "failed": "Az exportot nem sikerült elkészíteni: {{reason}} Semmi nem maradt meg.",
+    "cancelled": "Az exportálás megszakadt.",
+    "interrupted": "Az export nem készült el: a szerver közben újraindult.",
+    "keptEarlier": "A korábbi exportodat még őrizzük.",
+    "expired": "Az exportodat már nem őrizzük: törlődött ekkor: {{time}}.",
+    "noCars": "Nincs saját autód, amit exportálhatnál. A veled megosztott autók a tulajdonosukéi, ők exportálhatják őket.",
+    "car": {
+      "button": "Az autó exportálása",
+      "title": "{{car}} exportálása",
+      "description": "Fájl erről az autóról, amelyet az Importálás oldal vissza tud olvasni, itt vagy egy másik Tankstaton."
+    },
+    "started": "Az export készül.",
+    "open": "Importálás és exportálás megnyitása"
   }
 }
