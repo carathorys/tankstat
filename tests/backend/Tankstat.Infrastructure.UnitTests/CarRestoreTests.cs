@@ -128,6 +128,17 @@ public sealed partial class BackupImportRunTests
         };
     }
 
+    /// <summary>A person's notifications once one of the kind is there (a run tells people after its row says how it ended), or after a while.</summary>
+    private static async Task<List<Tankstat.Domain.Notifications.Notification>> ToldOfAsync(TestDatabase database, Guid recipient, NotificationKind kind)
+    {
+        for (var i = 0; ; i++)
+        {
+            var told = await NotificationsAsync(database, recipient);
+            if (told.Any(t => t.Kind == kind) || i == 250) return told;
+            await Task.Delay(20);
+        }
+    }
+
     private async Task<string> OpenRestorePointAsync(TestDatabase here, Principal admin, string backup)
     {
         var status = await here.Get<IBackupImportSessions>().OpenFileAsync(admin.Id, backup, default);
@@ -258,11 +269,11 @@ public sealed partial class BackupImportRunTests
             Assert.Equal(newDave.Id, (await db.Refuelings.SingleAsync(r => r.VehicleId == polo)).OwnerId);
         }
         // Who is told, after the commit: each car's owner and sharers, the other administrators, the one who ran it.
-        Assert.Contains(await ToldAsync(here, anna.Id), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "back" && n.Args["count"] == "1");
-        Assert.Contains(await ToldAsync(here, bob.Id), n => n.Kind == NotificationKind.CarRestored && n.Args["vehicleName"] == "Golf");
-        Assert.Contains(await ToldAsync(here, newDave.Id), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "again");
-        Assert.Contains(await ToldAsync(here, eve.Id), n => n.Kind == NotificationKind.CarsRestored && n.Args["count"] == "2");
-        var mine = await ToldAsync(here, ada.Id);
+        Assert.Contains(await ToldOfAsync(here, anna.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "back" && n.Args["count"] == "1");
+        Assert.Contains(await ToldOfAsync(here, bob.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored && n.Args["vehicleName"] == "Golf");
+        Assert.Contains(await ToldOfAsync(here, newDave.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "again");
+        Assert.Contains(await ToldOfAsync(here, eve.Id, NotificationKind.CarsRestored), n => n.Kind == NotificationKind.CarsRestored && n.Args["count"] == "2");
+        var mine = await ToldOfAsync(here, ada.Id, NotificationKind.RestoreFinished);
         Assert.Contains(mine, n => n.Kind == NotificationKind.RestoreFinished);
         Assert.DoesNotContain(mine, n => n.Kind is NotificationKind.CarRestored or NotificationKind.CarsRestored);
         // The Import page never shows a restore.
@@ -312,7 +323,7 @@ public sealed partial class BackupImportRunTests
         var after = await RowsOfAsync(here, golf);
         Assert.Equal(before["Refuelings"], after["Refuelings"]); // the backup's two, under their ids, by Anna, at their versions
         Assert.Equal(anna.Id, Assert.Single(after["Vehicles"].Select(l => Guid.Parse(l.Split(' ')[2]))));
-        var told = Assert.Single(await ToldAsync(here, anna.Id), n => n.Kind == NotificationKind.CarRestored);
+        var told = Assert.Single(await ToldOfAsync(here, anna.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored);
         Assert.Equal(("replaced", "2", "refueling"), (told.Args["how"], told.Args["count"], told.Args["kinds"]));
     }
 
@@ -333,7 +344,7 @@ public sealed partial class BackupImportRunTests
         var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null)], default));
         Assert.Equal(ImportRunState.Done, (await FinishedAsync(here, run.Id)).State);
 
-        Assert.Contains(await ToldAsync(here, eve.Id), n => n.Kind == NotificationKind.CarsRestored);
+        Assert.Contains(await ToldOfAsync(here, eve.Id, NotificationKind.CarsRestored), n => n.Kind == NotificationKind.CarsRestored);
         Assert.Empty(await NotificationsAsync(here, anna.Id)); // everything was here: the owner's answer on #340
     }
 
