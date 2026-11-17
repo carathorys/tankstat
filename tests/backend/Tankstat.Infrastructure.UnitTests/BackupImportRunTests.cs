@@ -132,8 +132,21 @@ public sealed partial class BackupImportRunTests(ITestOutputHelper output) : IAs
 
     private async Task<string> OpenAsync(TestDatabase database, Principal who, string backup)
     {
-        await using var content = File.OpenRead(backup);
-        var status = await database.Get<IBackupImportSessions>().UploadAsync(who.Id, content, default);
+        // A run's row says how it ended a moment before the runner lets go of its file (after the commit): an upload right then is told the
+        // file is still in use, so the test waits for the hold to go, as a person's next upload would simply come later.
+        BackupImportStatus? status = null;
+        for (var tries = 0; status is null; tries++)
+        {
+            await using var content = File.OpenRead(backup);
+            try
+            {
+                status = await database.Get<IBackupImportSessions>().UploadAsync(who.Id, content, default);
+            }
+            catch (DomainException e) when (e.Key == "import.fileInUse" && tries < 100)
+            {
+                await Task.Delay(50);
+            }
+        }
         for (var i = 0; i < 600 && database.Get<IBackupImportSessions>().Find(who.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
         Assert.Equal(BackupImportState.Opened, database.Get<IBackupImportSessions>().Find(who.Id, status.Token)!.State);
         return status.Token;
