@@ -114,6 +114,7 @@ type Query {
     differing: Boolean!
     skip: Int!
     take: Int!
+    tyres: ImportTyreChoiceInput
   ): ImportEntryPageInfo! @cost(weight: "10")
   importRun(id: UUID!): ImportRunInfo @cost(weight: "10")
   myImportRun: ImportRunInfo @cost(weight: "10")

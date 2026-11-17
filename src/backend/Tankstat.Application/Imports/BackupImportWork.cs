@@ -64,6 +64,9 @@ public sealed record ImportTyreComparison(Tyres.TyreBook Backup, IReadOnlyList<(
     public IReadOnlyList<Domain.Tyres.TyreSet> Chosen(ImportTyreChoice? choice) =>
         choice is null ? [] : [.. Sets.Where(s => s.Offer.State == ImportSetState.New && choice.Wants(s.Set.Id)).Select(s => s.Set)];
 
+    /// <summary>Something of the tyres comes with this choice: a new set wanted, or lines of no set.</summary>
+    public bool Coming(ImportTyreChoice? choice) => choice is not null && (Chosen(choice).Count > 0 || (choice.NoSetLines && NoSetLines.Count > 0));
+
     public IReadOnlySet<Guid> ExpensesOf(ImportTyreChoice? choice)
     {
         if (choice is null) return new HashSet<Guid>();
@@ -104,7 +107,7 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     public static void RequireSound(IReadOnlyCollection<ImportCarChoice> choices, BackupFileSummary file)
     {
         if (choices.Count == 0) throw new DomainException("import.noCars", "Choose at least one car to import.");
-        if (choices.Sum(c => (c.Kinds ?? ImportCarKinds.Missing).All.Sum(k => k.Exceptions)) > MaxExceptions)
+        if (choices.Sum(c => (c.Kinds ?? ImportCarKinds.Missing).All.Sum(k => k.Exceptions) + (c.Kinds?.Tyres is { } t ? (t.Sets?.Count ?? 0) + (t.Except?.Count ?? 0) : 0)) > MaxExceptions)
             throw new DomainException(TooManyChoicesKey, "Too many entries were chosen one by one.", new { Max = MaxExceptions });
         if (choices.Any(c => file.Cars.All(f => f.Id != c.CarId))) throw new DomainException("import.unknownCar", "The file has no such car.");
         if (choices.GroupBy(c => c.CarId).Any(g => g.Count() > 1) || choices.Where(c => c.TargetVehicleId is not null).GroupBy(c => c.TargetVehicleId).Any(g => g.Count() > 1))
@@ -279,10 +282,11 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     /// What can be refused before a run is queued (the page holds the same back): a car with every kind left out, and a <i>Replace all</i>
     /// of a kind that is held back (a photo, a tyre log line) or that the backup has none of.
     /// </summary>
-    public static void RequireSound(BackupCarSummary car, ImportCarComparison compared, ImportCarKinds? kinds)
+    /// <param name="tyresComing">A tyre set, or lines of no set, come with the car's tyre choice (#339): then it is no empty car.</param>
+    public static void RequireSound(BackupCarSummary car, ImportCarComparison compared, ImportCarKinds? kinds, bool tyresComing = false)
     {
         kinds ??= ImportCarKinds.Missing;
-        if (kinds.All.All(k => k.Mode == ImportKindMode.DontImport) && !kinds.AnyTyres)
+        if (kinds.All.All(k => k.Mode == ImportKindMode.DontImport) && !tyresComing)
             throw new DomainException(NothingChosenKey, "Choose at least one kind to import for this car, or leave the car out.", new { Car = car.Name });
         if (compared.NewCar) return;
         Check(compared.Refuelings, kinds.Refuelings);

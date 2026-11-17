@@ -33,7 +33,7 @@ import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage, SuccessMessage } from '../../messages.tsx'
 import { BackupFileStep } from './BackupFileStep.tsx'
 import { KindsDisclosure, ReplaceConfirmations, type Replacement } from './BackupKinds.tsx'
-import { defaultKinds, defaultTyres, kindsInput, nothingChosen, replaces, useKindLine, type CarReview, type Kind, type Kinds, type TyreChoice } from './backupKinds.ts'
+import { defaultKinds, defaultTyres, kindsInput, nothingChosen, tyresInput, replaces, useKindLine, type CarReview, type Kind, type Kinds, type TyreChoice } from './backupKinds.ts'
 
 export type BackupStep = 'file' | 'cars' | 'review' | 'done'
 
@@ -144,7 +144,7 @@ function useUnits() {
 const toInput = (choices: Record<string, Choice>, names: Record<string, string> = {}) =>
   Object.entries(choices)
     .filter(([, c]) => c.picked)
-    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: { except: c.tyres.except, noSetLines: c.tyres.noSetLines }, confirmedName: names[carId] }))
+    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: tyresInput(c.tyres), confirmedName: names[carId] }))
 
 // ---- 2. the cars ---------------------------------------------------------------------------------------------
 
@@ -179,7 +179,7 @@ function CarsStep({
   const problemOf = (offer: Offer): string | null => {
     const choice = choiceOf(offer)
     if (!choice.picked) return null
-    if (choice.asNew) return nothingChosen(choice.kinds) ? t('errors.import.nothingChosen', { car: offer.car.name }) : null
+    if (choice.asNew) return nothingChosen(choice.kinds, choice.tyres) ? t('errors.import.nothingChosen', { car: offer.car.name }) : null
     const target = data.targets.find((v) => v.id === choice.target)
     if (!target) return t('import.cars.neither')
     if (target.distanceUnit !== offer.car.distanceUnit || target.volumeUnit !== offer.car.volumeUnit)
@@ -190,7 +190,7 @@ function CarsStep({
         targetUnits: unitsOf(target.distanceUnit, target.volumeUnit),
       })
     if (picked.some((other) => other.car.id !== offer.car.id && !choiceOf(other).asNew && choiceOf(other).target === choice.target)) return t('import.cars.taken', { target: target.name })
-    if (nothingChosen(choice.kinds)) return t('errors.import.nothingChosen', { car: offer.car.name })
+    if (nothingChosen(choice.kinds, choice.tyres)) return t('errors.import.nothingChosen', { car: offer.car.name })
     return null
   }
   const ready = picked.length > 0 && picked.every((o) => problemOf(o) === null)

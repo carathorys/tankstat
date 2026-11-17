@@ -426,3 +426,18 @@ it('the report says the tyres imported, the lines of no set, the amounts already
   expect(done.getByText(/^The tyre set Hankook: Old is on the car then, from .*2024/)).toBeInTheDocument()
   await check(view.container)
 })
+
+it('a car can bring only its tyres: every log kind left out goes on while a set comes, and not once none does', async () => {
+  TYRES = { c1: { __typename: 'ImportTyreReviewInfo', noSetLines: 0, noSetExpenses: 0, expenses: 3, sets: [offer('s1', 'Nokian WR', 'NEW')] } }
+  const { calls, ui } = await cars()
+  const car = await open(ui, 'Octavia')
+  for (const group of ['Refuellings of Octavia', 'Expenses of Octavia', 'Recurring expenses of Octavia'])
+    await ui.click(within(await car.findByRole('radiogroup', { name: group })).getByRole('radio', { name: "Don't import" }))
+  expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled()
+  // The comparison the rows come from is asked with the tyre choice: the sets' expenses are not the expenses'.
+  expect(calls.reviews.at(-1)?.[0]).toMatchObject({ tyres: { except: [], noSetLines: true } })
+
+  await ui.click(within(car.getByRole('group', { name: 'Tyre sets of Octavia' })).getByRole('checkbox', { name: 'Nokian WR' }))
+  expect(car.getByText('Choose at least one kind to import for Octavia, or leave the car out.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+})

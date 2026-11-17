@@ -22,8 +22,13 @@ export type Kinds = Record<Kind, KindChoice>
 export interface TyreChoice {
   except: string[]
   noSetLines: boolean
+  /** How many tyre sets and line groups come by this choice, once the rows have been shown (null before): a car can bring only its tyres. */
+  coming: number | null
 }
-export const defaultTyres = (): TyreChoice => ({ except: [], noSetLines: true })
+export const defaultTyres = (): TyreChoice => ({ except: [], noSetLines: true, coming: null })
+
+/** The tyre choice as the server takes it. */
+export const tyresInput = (tyres: TyreChoice) => ({ except: tyres.except, noSetLines: tyres.noSetLines })
 
 export type CarReview = BackupImportReviewQuery['backupImportReview'][number]
 export type SetOffer = CarReview['tyres']['sets'][number]
@@ -38,7 +43,8 @@ export const addedOf = (choice: KindChoice, review: Pick<KindReview, 'new'>) => 
 export const takenOf = (choice: KindChoice, review: Pick<KindReview, 'differ'>) => picks(choice.takeBackups, choice.differExceptions, review.differ)
 
 export const replaces = (kinds: Kinds) => KINDS.some((kind) => kinds[kind].mode === 'REPLACE_ALL')
-export const nothingChosen = (kinds: Kinds) => KINDS.every((kind) => kinds[kind].mode === 'DONT_IMPORT')
+/** Every log kind left out and no tyres coming (#339: tyres alone are an import): the server refuses the same. */
+export const nothingChosen = (kinds: Kinds, tyres?: TyreChoice) => KINDS.every((kind) => kinds[kind].mode === 'DONT_IMPORT') && !((tyres?.coming ?? 0) > 0)
 
 /** The kinds as the server takes them: one left at *Only the missing* is left out. A new car's kind comes whole, or not at all. */
 export function kindsInput(kinds: Kinds, asNew: boolean) {

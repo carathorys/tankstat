@@ -9,7 +9,7 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loading } from '../../components/Loading.tsx'
 import { Segmented } from '../../components/Segmented.tsx'
@@ -21,7 +21,7 @@ import { useFormat } from '../../i18n/format.ts'
 import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { MEDIA } from '../../theme/media.ts'
-import { KINDS, useHeldBack, useKindLine, type CarReview, type Kind, type KindChoice, type KindReview, type Kinds, type TyreChoice } from './backupKinds.ts'
+import { KINDS, tyresInput, useHeldBack, useKindLine, type CarReview, type Kind, type KindChoice, type KindReview, type Kinds, type TyreChoice } from './backupKinds.ts'
 import { useKeyText } from '../../i18n/errors.ts'
 
 /**
@@ -115,10 +115,14 @@ function TargetKinds({
   const heldBack = useHeldBack()
   const line = useKindLine()
   const [choosing, setChoosing] = useState<Kind | null>(null)
-  // The comparison itself, as it is whatever is chosen: the choices are worked out from it here.
-  const compared = useQuery(BackupImportReviewDocument, { variables: { token, cars: [{ carId: car.id, targetVehicleId: target.id }] }, fetchPolicy: 'network-only' })
+  // The comparison itself, as it is whatever is chosen: the choices are worked out from it here. The tyre choice goes with it, as the
+  // expenses the chosen sets' lines hold come with the tyres and are not counted among the expenses (#339); asked again, the rows stay.
+  const compared = useQuery(BackupImportReviewDocument, {
+    variables: { token, cars: [{ carId: car.id, targetVehicleId: target.id, tyres: tyresInput(tyres) }] },
+    fetchPolicy: 'network-only',
+  })
   if (compared.error) return <ErrorMessage error={compared.error} />
-  const review = compared.data?.backupImportReview[0]
+  const review = (compared.data ?? compared.previousData)?.backupImportReview[0]
   if (!review) return <Loading />
   return (
     <>
@@ -168,6 +172,7 @@ function TargetKinds({
                 kind={kind}
                 review={of}
                 choice={choice}
+                tyres={tyres}
                 onClose={() => setChoosing(null)}
                 onDone={(next) => {
                   set(next)
@@ -187,7 +192,7 @@ function TargetKinds({
 function NewCarTyres({ token, car, tyres, onTyres }: { token: string; car: { id: string; name: string }; tyres: TyreChoice; onTyres: (tyres: TyreChoice) => void }) {
   const compared = useQuery(BackupImportReviewDocument, { variables: { token, cars: [{ carId: car.id, targetVehicleId: null }] }, fetchPolicy: 'network-only' })
   if (compared.error) return <ErrorMessage error={compared.error} />
-  const review = compared.data?.backupImportReview[0]
+  const review = (compared.data ?? compared.previousData)?.backupImportReview[0]
   if (!review) return <Loading />
   return <TyreRows car={car} review={review} tyres={tyres} onTyres={onTyres} />
 }
@@ -200,7 +205,13 @@ function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; revi
   const { t } = useTranslation()
   const keyText = useKeyText()
   const heading = useId()
+  const ids = useId()
   const { sets, noSetLines, noSetExpenses } = review.tyres
+  // How much of the tyres comes by this choice, for the page's own "nothing chosen" (a car can bring only its tyres).
+  const coming = sets.filter((s) => s.state === 'NEW' && !tyres.except.includes(s.id)).length + (tyres.noSetLines && noSetLines > 0 ? 1 : 0)
+  useEffect(() => {
+    if (tyres.coming !== coming) onTyres({ ...tyres, coming })
+  }, [coming, tyres, onTyres])
   if (sets.length === 0 && noSetLines === 0) return null
   const why = (set: (typeof sets)[number]) =>
     set.state === 'HERE'
@@ -224,16 +235,16 @@ function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; revi
                     disabled={set.state !== 'NEW'}
                     checked={set.state === 'NEW' && !tyres.except.includes(set.id)}
                     onChange={(e) => onTyres({ ...tyres, except: e.target.checked ? tyres.except.filter((id) => id !== set.id) : [...tyres.except, set.id] })}
-                    slotProps={{ input: { 'aria-describedby': `${set.id}-counts${reason ? ` ${set.id}-why` : ''}` } }}
+                    slotProps={{ input: { 'aria-describedby': `${ids}-${set.id}-counts${reason ? ` ${ids}-${set.id}-why` : ''}` } }}
                   />
                 }
                 label={set.name}
               />
-              <Typography id={`${set.id}-counts`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+              <Typography id={`${ids}-${set.id}-counts`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
                 {t('import.tyres.setCounts', { season: t(`tyres.seasons.${set.season}`), installations: set.installations, lines: set.lines, tyres: set.tyres })}
               </Typography>
               {reason && (
-                <Typography id={`${set.id}-why`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+                <Typography id={`${ids}-${set.id}-why`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
                   {reason}
                 </Typography>
               )}
@@ -247,12 +258,12 @@ function TyreRows({ car, review, tyres, onTyres }: { car: { name: string }; revi
                 <Checkbox
                   checked={tyres.noSetLines}
                   onChange={(e) => onTyres({ ...tyres, noSetLines: e.target.checked })}
-                  slotProps={{ input: { 'aria-describedby': 'no-set-counts' } }}
+                  slotProps={{ input: { 'aria-describedby': `${ids}-no-set` } }}
                 />
               }
               label={t('import.tyres.noSet')}
             />
-            <Typography id="no-set-counts" variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
+            <Typography id={`${ids}-no-set`} variant="body2" sx={{ color: 'text.secondary', pl: 4 }}>
               {t('import.tyres.noSetCounts', { count: noSetLines, expenses: noSetExpenses })}
             </Typography>
           </Stack>
@@ -302,6 +313,7 @@ function ChooseDialog({
   kind,
   review,
   choice,
+  tyres,
   onClose,
   onDone,
 }: {
@@ -311,6 +323,7 @@ function ChooseDialog({
   kind: Kind
   review: KindReview
   choice: KindChoice
+  tyres: TyreChoice
   onClose: () => void
   onDone: (choice: KindChoice) => void
 }) {
@@ -322,7 +335,7 @@ function ChooseDialog({
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((other) => other !== id) : [...list, id])
   const pages = (count: number) => Array.from({ length: count }, (_, i) => i)
   const left = (total: number, pagesShown: number) => Math.min(PAGE, total - pagesShown * PAGE)
-  const query = { token, carId: car.id, targetVehicleId: targetId, kind }
+  const query = { token, carId: car.id, targetVehicleId: targetId, kind, tyres: tyresInput(tyres) }
   return (
     <DialogFrame open onClose={onClose} title={t(`import.kinds.${kind}.dialogTitle`, { car: car.name })} maxWidth={720} fullScreen={phone}>
       <Stack sx={{ gap: 2.5 }}>
@@ -425,7 +438,7 @@ function EntriesPage({
   variables,
   children,
 }: {
-  variables: { token: string; carId: string; targetVehicleId: string; kind: string; differing: boolean; skip: number; take: number }
+  variables: { token: string; carId: string; targetVehicleId: string; kind: string; differing: boolean; skip: number; take: number; tyres: ReturnType<typeof tyresInput> }
   children: (entry: Entry, text: ReturnType<typeof useEntryText>) => React.ReactNode
 }) {
   const text = useEntryText()

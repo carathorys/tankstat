@@ -261,9 +261,10 @@ public sealed class ImportRunQueries
     /// only in the backup, or with <c>differing</c> the ones that differ from the target's, at most 200 at a time.
     /// </summary>
     public async Task<ImportEntryPageInfo> GetBackupImportEntries(
-        string token, Guid carId, Guid targetVehicleId, string kind, bool differing, int skip, int take, [Service] BackupImportRunService imports, CancellationToken ct)
+        string token, Guid carId, Guid targetVehicleId, string kind, bool differing, int skip, int take, [Service] BackupImportRunService imports, CancellationToken ct,
+        ImportTyreChoiceInput? tyres = null)
     {
-        var page = await imports.EntriesAsync(token, carId, targetVehicleId, kind, differing, skip, take, ct);
+        var page = await imports.EntriesAsync(token, carId, targetVehicleId, kind, differing, skip, take, ct, tyres?.ToChoice());
         return new ImportEntryPageInfo(page.Total, [.. page.Items.Select(e => new ImportEntryInfo(e.Id, e.Date, e.Odometer, e.Title, e.Amount, e.Currency, e.Volume,
             [.. e.Differences.Select(d => new ImportFieldDifferenceInfo(d.Field, d.Backup, d.Target))]))]);
     }

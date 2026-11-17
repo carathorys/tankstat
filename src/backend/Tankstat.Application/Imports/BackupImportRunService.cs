@@ -52,10 +52,10 @@ public sealed class BackupImportRunService(
             var car = await file.ReadCarAsync(choice.CarId, ct) ?? throw new DomainException("import.unknownCar", "The file has no such car.");
             var target = choice.TargetVehicleId is { } id ? await rules.TargetAsync(me.Id, car.Car, id, ct) : null;
             var compared = target is null ? BackupImportRules.Whole(car) : await rules.CompareAsync(car, target, ct);
-            BackupImportRules.RequireSound(car.Car, compared, choice.Kinds);
             // The tyres always (#339): the Cars step offers each set from this answer.
             var tyres = await rules.CompareTyresAsync(file, car.Car.Id, target, ct);
             var tyreChoice = choice.Kinds?.Tyres;
+            BackupImportRules.RequireSound(car.Car, compared, choice.Kinds, tyres.Coming(tyreChoice));
             // A Replace all asks for the target's name, typed (#338): checked when the start is accepted, never again when a waiting
             // run's turn comes, so a car renamed meanwhile does not end the run.
             if (starting && target is not null && (choice.Kinds ?? ImportCarKinds.Missing).All.Any(k => k.Mode == ImportKindMode.ReplaceAll)
@@ -87,11 +87,19 @@ public sealed class BackupImportRunService(
     /// A page of one section of the <i>Choose…</i> dialog (#338): the entries of a kind that are only in the backup, or that differ from
     /// the target's (with both sides of each field that does), in the backup's order, at most 200 at a time.
     /// </summary>
-    public async Task<ImportEntryPage> EntriesAsync(string token, Guid carId, Guid targetVehicleId, string kind, bool differing, int skip, int take, CancellationToken ct)
+    /// <param name="tyres">The car's tyre choice (#339): the expenses its lines hold come with the tyres, so they are not offered here.</param>
+    public async Task<ImportEntryPage> EntriesAsync(string token, Guid carId, Guid targetVehicleId, string kind, bool differing, int skip, int take, CancellationToken ct,
+        ImportTyreChoice? tyres = null)
     {
         var (me, file) = await FileAsync(token, ct);
         var car = await file.ReadCarAsync(carId, ct) ?? throw new DomainException("import.unknownCar", "The file has no such car.");
-        var compared = await rules.CompareAsync(car, await rules.TargetAsync(me.Id, car.Car, targetVehicleId, ct), ct);
+        var target = await rules.TargetAsync(me.Id, car.Car, targetVehicleId, ct);
+        var compared = await rules.CompareAsync(car, target, ct);
+        if (tyres is not null && (await rules.CompareTyresAsync(file, carId, target, ct)).ExpensesOf(tyres) is { Count: > 0 } held)
+            compared = compared with
+            {
+                Expenses = compared.Expenses with { New = [.. compared.Expenses.New.Where(e => !held.Contains(e.Id))], Backup = [.. compared.Expenses.Backup.Where(e => !held.Contains(e.Id))] },
+            };
         (skip, take) = (Math.Max(0, skip), Math.Clamp(take, 1, 200));
         return kind switch
         {

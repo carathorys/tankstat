@@ -6,6 +6,7 @@ using Tankstat.Application.Imports;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Tyres;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
@@ -221,5 +222,29 @@ public sealed partial class BackupImportRunTests
         Assert.Equal((BackupImportWork.TyreSetKind, "Michelin Primacy", "tyres.twoSetsAtOnce"), (refused.Kind, refused.Title, refused.Key));
         Assert.Equal(["Old all-season"], report.Tyres!.Sets);
         Assert.Equal(["Hankook", "Late summer", "Old all-season"], await SetNamesAsync(here, own));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACarBringsOnlyItsTyres_AndTheChooseDialogDoesNotOfferTheExpensesTheTyresBring(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await TyreSourceAsync();
+        var bob = await PersonAsync(here, "Bob");
+        var own = await AsAsync(here, bob, async sp => (await sp.GetRequiredService<VehicleService>().AddAsync("My Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id);
+        var token = await OpenAsync(here, bob, source.Backup);
+        var imports = (IServiceProvider sp) => sp.GetRequiredService<BackupImportRunService>();
+        var nothing = new ImportKindChoice(ImportKindMode.DontImport);
+        var all = new ImportTyreChoice(null);
+
+        // Every log kind left out: no import without tyres, one with them.
+        var none = await Assert.ThrowsAsync<DomainException>(() => AsAsync(here, bob, sp => imports(sp).ReviewAsync(token, [new(source.Car, own, Kinds: new(nothing, nothing, nothing))], default)));
+        Assert.Equal("import.nothingChosen", none.Key);
+        var onlyTyres = Assert.Single(await AsAsync(here, bob, sp => imports(sp).ReviewAsync(token, [new(source.Car, own, Kinds: new(nothing, nothing, nothing, all))], default)));
+        Assert.Equal(5, onlyTyres.Tyres!.Expenses);
+
+        // The dialog's expenses: with the tyres chosen, the five their lines hold are not among them.
+        var with = await AsAsync(here, bob, sp => imports(sp).EntriesAsync(token, source.Car, own, "expense", differing: false, 0, 50, default, all));
+        var without = await AsAsync(here, bob, sp => imports(sp).EntriesAsync(token, source.Car, own, "expense", differing: false, 0, 50, default));
+        Assert.Equal((0, 5), (with.Total, without.Total));
     }
 }

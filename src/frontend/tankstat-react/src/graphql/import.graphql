@@ -141,8 +141,8 @@ query BackupImportCars($token: String!) {
 }
 
 # A page of the Choose dialog (#338): one kind's entries that are only in the backup, or (differing) that differ from the car's.
-query BackupImportEntries($token: String!, $carId: UUID!, $targetVehicleId: UUID!, $kind: String!, $differing: Boolean!, $skip: Int!, $take: Int!) {
-  backupImportEntries(token: $token, carId: $carId, targetVehicleId: $targetVehicleId, kind: $kind, differing: $differing, skip: $skip, take: $take) {
+query BackupImportEntries($token: String!, $carId: UUID!, $targetVehicleId: UUID!, $kind: String!, $differing: Boolean!, $skip: Int!, $take: Int!, $tyres: ImportTyreChoiceInput) {
+  backupImportEntries(token: $token, carId: $carId, targetVehicleId: $targetVehicleId, kind: $kind, differing: $differing, skip: $skip, take: $take, tyres: $tyres) {
     total
     items {
       id
