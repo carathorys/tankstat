@@ -154,6 +154,44 @@ public sealed partial class BackupImportRunTests
         Assert.Single(Directory.GetFiles(Path.Combine(_root, "here", "uploads", image.Folder!.Replace('/', Path.DirectorySeparatorChar))));
     }
 
+    [Theory, MemberData(nameof(Providers))]
+    public async Task APictureReplacedInACommittedRun_TakesTheOldFileWithIt_AndADashboardTileWhoseChartIsRefused_IsCounted(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await MediaSourceAsync();
+        var bob = await PersonAsync(here, "Bob");
+        // Bob's Clio has a picture of its own and his thirty widgets already: the backup's chart is refused, and the rest goes on.
+        var (own, old) = await AsAsync(here, bob, async sp =>
+        {
+            var own = (await sp.GetRequiredService<VehicleService>().AddAsync("My Clio", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            var old = await sp.GetRequiredService<ImageService>().SetVehiclePictureAsync(own, Png(7), default);
+            for (var i = 0; i < ChartService.MaxPerUserAndVehicle; i++)
+                await sp.GetRequiredService<ChartService>().CreateAsync(own, new ChartInput($"Mine {i}", Recipe(), false), default);
+            return (own, old);
+        });
+        string oldFolder;
+        await using (var before = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            oldFolder = Path.Combine(_root, "here", "uploads", (await before.Images.SingleAsync(i => i.Id == old)).Folder!.Replace('/', Path.DirectorySeparatorChar));
+        Assert.Single(Directory.GetFiles(oldFolder));
+
+        var choice = new ImportCarChoice(source.Car, own, Kinds: new(Media: new(Photos: false, Picture: true, Charts: true, Dashboard: true)));
+        var report = ImportRunJson.Read<ImportRunReport>((await FinishedAsync(here, (await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), choice)).Id)).Report)!.Cars.Single();
+
+        Assert.False(report.LeftOut);
+        Assert.Contains(report.Refused, r => (r.Kind, r.Key) == (BackupMediaWork.ChartKind, "chart.limit"));
+        // The dashboard comes without the tile of the chart that did not: left out and counted, never dropped without a word.
+        Assert.Equal((true, true, 0), (report.Media!.Picture, report.Media.Dashboard, report.Media.Charts));
+        Assert.True(report.Media.TilesLeftOut > 0);
+        // Committed: the new picture is the car's, and the old one's row and file are gone.
+        await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.NotEqual(old, (await db.Vehicles.SingleAsync(v => v.Id == own)).PictureImageId);
+        Assert.False(await db.Images.AnyAsync(i => i.Id == old));
+        // A car's pictures share its folder (`<folder>/<image id>`): the new one's file is there, the old one's not.
+        var picture = (await db.Vehicles.SingleAsync(v => v.Id == own)).PictureImageId!.Value;
+        Assert.Equal([picture.ToString("N")], Directory.GetFiles(oldFolder).Select(Path.GetFileName));
+        Assert.False(File.Exists(Path.Combine(oldFolder, old.ToString("N"))));
+    }
+
     [Fact]
     public async Task AnExportersOwnChartsAndDashboard_ComeBackToThem_AndAReplaceAllCountsThePhotosThatDoNot()
     {
