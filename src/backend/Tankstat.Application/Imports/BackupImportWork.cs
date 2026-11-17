@@ -496,6 +496,28 @@ public sealed class BackupImportWork(
             var pool = new ImportExpensePool((await expenseRows.ListAllForVehicleAsync(vehicle.Id, ct))
                 .Where(e => !heldByLines.Contains(e.Id)).Select(e => (e.Id, e.Date, e.Title, e.Amount)));
             var (names, lines, singles, noSet, made, amountsHere) = (new List<string>(), 0, 0, 0, 0, 0);
+            // A set (or the lines of no set) whose replay is refused brings the expenses its lines hold as plain ones, as if the tyres had
+            // not been chosen (the owner's answer on #374, after #334's rule): kept out of the expense step for the tyres, they would come
+            // nowhere. (A set refused before its replay was never chosen: its costs came with the expenses.) Only what the expenses' own
+            // choice would have added, each in a savepoint of its own.
+            var plainCosts = BackupImportRules.Work(compared, chosen.Kinds).Expenses.Adds.ToDictionary(e => e.Id);
+            async Task PlainCostsAsync(IEnumerable<Domain.Tyres.TyreEntry> held)
+            {
+                foreach (var id in held.Where(l => tyres.Backup.IsLive(l) && l.ExpenseId is not null).Select(l => l.ExpenseId!.Value).Distinct().ToList())
+                {
+                    if (!plainCosts.Remove(id, out var cost) || expenseIds.ContainsKey(id)) continue;
+                    await run.ThrowIfStoppedAsync();
+                    try
+                    {
+                        await run.InSavepointAsync(async () => expenseIds[id] = (await expenses.AddAsync(vehicle.Id, cost.Values, ct)).Id);
+                        expensesAdded++;
+                    }
+                    catch (KeyedException e)
+                    {
+                        Refused(new ImportRefusedEntry(BackupImportRules.Expense, cost.Values.Date, cost.Values.Title, e.Key, ArgsOf(e)));
+                    }
+                }
+            }
             // A chosen set the car's history refuses now (it changed since the review) is that set's refusal; one here now stays as it is.
             foreach (var (set, offer) in tyres.Sets.Where(s => s.Offer.State == ImportSetState.Refused && tyreChoice.Sets?.Contains(s.Set.Id) == true))
             {
@@ -518,6 +540,7 @@ public sealed class BackupImportWork(
                 {
                     pool.Restore(mark);
                     Refused(new ImportRefusedEntry(TyreSetKind, null, BackupCarShapes.Cut(set.Name), e.Key, ArgsOf(e)));
+                    await PlainCostsAsync(tyres.Backup.Entries.Where(l => l.SetId == set.Id));
                 }
                 finally
                 {
@@ -539,6 +562,7 @@ public sealed class BackupImportWork(
                 {
                     pool.Restore(mark);
                     Refused(new ImportRefusedEntry(NoSetLinesKind, null, null, e.Key, ArgsOf(e)));
+                    await PlainCostsAsync(tyres.NoSetLines);
                 }
                 finally
                 {

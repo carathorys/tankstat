@@ -241,6 +241,40 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(["Hankook", "Late summer", "Old all-season"], await SetNamesAsync(here, own));
     }
 
+    private static async Task<List<string>> ExpenseTitlesAsync(TestDatabase here, Guid car)
+    {
+        await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        return await db.Expenses.Where(e => e.VehicleId == car).Select(e => e.Title).ToListAsync();
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ASetRefusedWhileItIsReplayed_BringsItsCostsAsPlainExpenses(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await TyreSourceAsync();
+        var bob = await PersonAsync(here, "Bob");
+        // Bob's own Golf read 50,000 km on 1 March 2025: the Michelin's fitting on 28 March at 15,200 km is refused when it is
+        // replayed, though no other set was on the car then (the comparison lets it through).
+        var own = await AsAsync(here, bob, async sp =>
+        {
+            var car = (await sp.GetRequiredService<VehicleService>().AddAsync("My Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RefuelingService>().LogAsync(car, new RefuelingInput(D(2025, 3, 1), 40, 60, "EUR", 50_000, true, null), default);
+            return car;
+        });
+        var token = await OpenAsync(here, bob, source.Backup);
+        var michelin = Assert.Single(await AsAsync(here, bob, sp => sp.GetRequiredService<BackupImportRunService>().ReviewAsync(token, [new(source.Car, own)], default)))
+            .Tyres!.Sets.Single(s => s.Name == "Michelin Primacy");
+        Assert.Equal(ImportSetState.New, michelin.State);
+
+        var queued = await StartAsync(here, bob, token, new ImportCarChoice(source.Car, own, Kinds: new ImportCarKinds(Tyres: new(Sets: [michelin.Id], NoSetLines: false))));
+        var report = ImportRunJson.Read<ImportRunReport>((await FinishedAsync(here, queued.Id)).Report)!.Cars.Single();
+
+        Assert.Contains(report.Refused, r => (r.Kind, r.Title) == (BackupImportWork.TyreSetKind, "Michelin Primacy"));
+        Assert.DoesNotContain("Michelin Primacy", await SetNamesAsync(here, own));
+        // Its price comes all the same, as a plain expense, as if the tyres had not been chosen (the owner's answer on #374).
+        Assert.Contains("Bought: Michelin", await ExpenseTitlesAsync(here, own));
+    }
+
     [Theory, MemberData(nameof(Providers))]
     public async Task ACarBringsOnlyItsTyres_AndTheChooseDialogDoesNotOfferTheExpensesTheTyresBring(string provider)
     {
