@@ -391,6 +391,29 @@ public sealed partial class BackupImportRunTests
         Assert.Empty(await NotificationsAsync(here, anna.Id)); // everything was here: the owner's answer on #340
     }
 
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACarStillHereWhoseEntriesTakeTheBackupsValues_TellsItsOwner(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, ada) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true));
+        var (golf, fill) = await AsAsync(here, anna, async sp =>
+        {
+            var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            return (golf, (await sp.GetRequiredService<RefuelingService>().LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default)).Id);
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        // Since the backup Anna changed the fill-up; the restore takes the backup's values for it, and adds nothing.
+        await AsAsync(here, anna, async sp => await sp.GetRequiredService<RefuelingService>().UpdateAsync(fill, new(Day, 42, 63, "EUR", 10_000, true, null), default));
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var take = new ImportCarChoice(golf, null, Kinds: new ImportCarKinds(Refuelings: new ImportKindChoice(ImportKindMode.Choose, TakeBackups: true)));
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [take], default));
+        Assert.Equal(ImportRunState.Done, (await FinishedAsync(here, run.Id)).State);
+
+        // Something was done to her car: she is told, and the entry counts.
+        Assert.Contains(await ToldOfAsync(here, anna.Id, NotificationKind.CarRestored), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "back" && n.Args["count"] == "1");
+    }
+
     public static TheoryData<string, bool> Elsewhere => new() { { "Sqlite", false }, { "PostgreSql", false }, { "SqlServer", false }, { "Sqlite", true } };
 
     [Theory, MemberData(nameof(Elsewhere))]

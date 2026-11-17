@@ -134,7 +134,7 @@ A full restore replaces everything. To put **only some cars** back as they were 
 
 **As they were.** Everything comes back under its **own id**, logged by **whoever logged it** (also someone who no longer has an account: the app then says *Someone who no longer has an account*), at **its version**, so a device's change made from that version still applies. Each restored entry's last change reads *restored from a backup* by the administrator, today. Every rule of today still applies: an entry the rules refuse is left out and listed in the report. Private charts and personal dashboards come back for the people who still have an account and can see the car; the others are counted in the report. Devices download the restored entries as any change; a car that comes back is listed again.
 
-**Who is told**, after the restore: each car's owner and everyone it is shared with (one notification per car; a car still here that got nothing back tells nobody), the other administrators, and you.
+**Who is told**, after the restore: each car's owner and everyone it is shared with (one notification per car; a car still here that got nothing back, and none of its entries took the backup's values, tells nobody), the other administrators, and you.
 
 ## On the administration page
 

@@ -150,6 +150,7 @@
       "CARS_RESTORED_other": "{{actor}} {{count}} autót állított vissza a(z) {{date}}-i mentésből: {{names}}.",
       "CAR_RESTORED_back": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: {{count}} bejegyzés került vissza.",
       "CAR_RESTORED_replaced": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: a(z) {{kind}} helyére a mentés {{count}} bejegyzése került.",
+      "CAR_RESTORED_changed": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből.",
       "CAR_RESTORED_again": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből. Újra a tiéd."
     }
   },

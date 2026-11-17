@@ -75,16 +75,20 @@ public sealed class ImportRunNotifier(IUserRepository users, Notifier notifier, 
         foreach (var car in restored.Where(c => c.VehicleId is not null && c.Restore is not null))
         {
             var replaced = (car.Kinds ?? []).Where(k => k.Mode == ImportKindMode.ReplaceAll).ToList();
-            var back = car.Refuelings + car.Expenses + car.Schedules + (car.Tyres?.Lines ?? 0) + (car.Tyres?.NoSetLines ?? 0) + (car.Media?.Photos ?? 0);
+            // The entries that came back, and those that took the backup's values again; and whether anything else came (a set without
+            // lines, a chart, the picture, a dashboard), which is said without a count (the owner's answer on #376).
+            var back = car.Refuelings + car.Expenses + car.Schedules + (car.Tyres?.Lines ?? 0) + (car.Tyres?.NoSetLines ?? 0) + (car.Media?.Photos ?? 0)
+                + (car.Kinds ?? []).Sum(k => k.Changed);
+            var more = car.Tyres?.Sets.Count > 0 || car.Media is { } m && (m.Picture || m.Charts > 0 || m.Dashboard || m.OwnDashboard);
             var vehicle = NotificationRef.Vehicle(car.VehicleId!.Value);
             var recipients = (await grants.ListForResourceAsync(Domain.Access.ResourceType.Vehicle, car.VehicleId.Value, ct))
                 .Where(g => g.Feature == Domain.Access.GrantedFeature.Logs).Select(g => g.GranteeId).Prepend(car.Restore!.OwnerId).Distinct();
             foreach (var recipient in recipients)
             {
                 var (how, number) = car.Restore.CameBack && recipient == car.Restore.OwnerId ? ("again", back)
-                    : replaced.Count > 0 ? ("replaced", replaced.Sum(k => k.Imported)) : ("back", back);
+                    : replaced.Count > 0 ? ("replaced", replaced.Sum(k => k.Imported)) : back > 0 ? ("back", back) : ("changed", 0);
                 // A car still here that got nothing back tells nobody (the owner's answer on #340); a gone one always tells.
-                if (!car.Restore.CameBack && number == 0 && replaced.Count == 0) continue;
+                if (!car.Restore.CameBack && back == 0 && replaced.Count == 0 && !more) continue;
                 drafts.Add(new NotificationDraft(recipient, NotificationKind.CarRestored, vehicle, NotificationRef.User(run.StartedById), NotificationArgs.Of(
                     ("actor", actor), ("vehicleName", car.TargetName ?? car.Name), ("date", date), ("how", how),
                     ("count", number.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("kinds", string.Join(",", replaced.Select(k => k.Kind))))));

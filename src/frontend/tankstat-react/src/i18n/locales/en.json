@@ -150,6 +150,7 @@
       "CARS_RESTORED_other": "{{actor}} restored {{count}} cars from the backup of {{date}}: {{names}}.",
       "CAR_RESTORED_back": "{{actor}} restored {{car}} from the backup of {{date}}: {{count}} entries came back.",
       "CAR_RESTORED_replaced": "{{actor}} restored {{car}} from the backup of {{date}}: {{count}} {{kind}} were replaced by the backup's.",
+      "CAR_RESTORED_changed": "{{actor}} restored {{car}} from the backup of {{date}}.",
       "CAR_RESTORED_again": "{{actor}} restored {{car}} from the backup of {{date}}. It is yours again."
     }
   },

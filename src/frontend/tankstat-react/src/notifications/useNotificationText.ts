@@ -108,7 +108,7 @@ export function useNotificationText() {
       case 'CARS_RESTORED':
         return { text: t('notifications.kinds.CARS_RESTORED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '', date: args.date ? date(args.date) : '' }), href: null }
       case 'CAR_RESTORED': {
-        const how = args.how === 'replaced' ? 'replaced' : args.how === 'again' ? 'again' : 'back'
+        const how = args.how === 'replaced' ? 'replaced' : args.how === 'again' ? 'again' : args.how === 'changed' ? 'changed' : 'back'
         const kinds = (args.kinds ?? '').split(',').filter((k): k is 'refueling' | 'expense' | 'recurring' => k === 'refueling' || k === 'expense' || k === 'recurring')
         return {
           text: t(`notifications.kinds.CAR_RESTORED_${how}`, {

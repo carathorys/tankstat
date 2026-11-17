@@ -138,6 +138,8 @@ it("words a partial restore for the administrator who ran it, the other administ
     /: 2 refuellings and expenses were replaced by the backup's\.$/,
   )
   expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Polo', date: '2026-11-03', how: 'again', count: '1', kinds: '' }, car).text).toMatch(/^Ada restored Polo from the backup of .*\. It is yours again\.$/)
+  // Only a set, a chart, the picture or a dashboard came: said without a count.
+  expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Golf', date: '2026-11-03', how: 'changed', count: '0', kinds: '' }, car).text).toMatch(/^Ada restored Golf from the backup of [^:]*\.$/)
 })
 
 it('says plainly that something happened it cannot describe yet, without a link, instead of breaking the list', () => {
