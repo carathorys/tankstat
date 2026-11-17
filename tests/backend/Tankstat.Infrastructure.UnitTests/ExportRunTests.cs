@@ -107,7 +107,10 @@ public sealed partial class BackupImportRunTests
         var earlier = new ExportRecord(Guid.NewGuid(), anna.Id, ExportState.Ready, ["Golf"], false, _clock.GetUtcNow(), _clock.GetUtcNow(), _clock.GetUtcNow().AddHours(24), Bytes: 10);
         stuck.Get<IExportFiles>().Save(earlier);
         await StartExportAsync(stuck, anna, golf);
-        Assert.Equal((1, 3), (await MyExportAsync(stuck, anna))!.Progress is { } p ? (p.Car, p.Total) : default);
+        // The run reports its first step on a thread of its own: asked until it has.
+        ExportProgress? progress = null;
+        for (var i = 0; i < 200 && (progress = (await MyExportAsync(stuck, anna))!.Progress) is null; i++) await Task.Delay(10);
+        Assert.Equal((1, 3), progress is { } p ? (p.Car, p.Total) : default);
         Assert.True(await AsAsync(stuck, anna, sp => sp.GetRequiredService<ExportService>().CancelAsync(default)));
         await stuck.Get<ExportRunner>().WhenIdleAsync();
         Assert.Contains(stuck.Get<IExportFiles>().Records(), r => r.Id == earlier.Id && r.State == ExportState.Ready); // the earlier file stays
@@ -126,8 +129,10 @@ public sealed partial class BackupImportRunTests
         Assert.False(failing.Log.Mentions("Zzcanary"));
 
         // A record still building that no runner here builds: the server stopped meanwhile.
-        failing.Get<IExportFiles>().Save(new ExportRecord(Guid.NewGuid(), bob.Id, ExportState.Building, ["Polo"], false, failing.Get<IExportRunner>().Since.AddMinutes(-1)));
-        Assert.Equal(ExportState.Interrupted, (await MyExportAsync(failing, bob))!.Record.State);
+        var cut = new ExportRecord(Guid.NewGuid(), bob.Id, ExportState.Building, ["Polo"], false, failing.Get<IExportRunner>().Since.AddMinutes(-1));
+        failing.Get<IExportFiles>().Save(cut);
+        await MyExportAsync(failing, bob); // a look sweeps
+        Assert.Equal(ExportState.Interrupted, failing.Get<IExportFiles>().Records().Single(r => r.Id == cut.Id).State);
     }
 
     [Fact]

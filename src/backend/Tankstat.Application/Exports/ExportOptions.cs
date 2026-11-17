@@ -31,7 +31,8 @@ public sealed class ExportOptions
     public TimeSpan Keep => TimeSpan.FromHours(KeepHours);
 }
 
-internal sealed class ExportOptionsValidator(IOptions<StorageOptions> storage, IOptions<BackupOptions> backups) : IValidateOptions<ExportOptions>
+/// <remarks>The backups' group is live (`LiveSettingsReadersTests`): read through the monitor, never a kept <c>IOptions</c>.</remarks>
+internal sealed class ExportOptionsValidator(IOptions<StorageOptions> storage, IOptionsMonitor<BackupOptions> backups) : IValidateOptions<ExportOptions>
 {
     public ValidateOptionsResult Validate(string? name, ExportOptions o)
     {
@@ -58,7 +59,7 @@ internal sealed class ExportOptionsValidator(IOptions<StorageOptions> storage, I
         catch (OptionsValidationException) { }
         try
         {
-            list.Add(("Backups:Path", backups.Value.Root));
+            list.Add(("Backups:Path", backups.CurrentValue.Root));
         }
         catch (OptionsValidationException) { }
         return list;
