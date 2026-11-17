@@ -26,3 +26,13 @@ export function importServer(): { url: string; backup: string } {
   if (!server || typeof all.backup !== 'string') throw new Error('No import server in E2E_IMPORT: scripts/test-e2e.sh starts them.')
   return { url: server.url, backup: all.backup }
 }
+
+/**
+ * The Standalone server this size's Restore cars test has to itself (#340), set up with the administrator `ADMIN`: scripts/test-e2e.sh
+ * starts one per size (`E2E_RESTORE`). A restore's run holds SQLite's one lock to write, and its people sign in.
+ */
+export function restoreServer(): { url: string } {
+  const server = (JSON.parse(process.env.E2E_RESTORE ?? '{}') as Record<string, { url: string }>)[test.info().project.name]
+  if (!server) throw new Error('No restore server in E2E_RESTORE: scripts/test-e2e.sh starts them.')
+  return server
+}

@@ -3,8 +3,8 @@
 # Playwright runs natively with E2E_NATIVE=1 (CI, which installs Chromium), otherwise in the Playwright image of the installed version
 # (this machine's Linux is not one Playwright supports). Arguments go to `playwright test`: scripts/test-e2e.sh --project phone
 # Besides it, six instances that wait for their setup (two of them set up first, so their setup reopens), on the next ports, for the
-# setup's tests (E2E_SETUP); and two more for the import from a backup (E2E_IMPORT), whose run locks SQLite for everyone on its server,
-# with a backup file the script writes for them from an instance of its own.
+# setup's tests (E2E_SETUP); two more for the import from a backup (E2E_IMPORT), whose run locks SQLite for everyone on its server,
+# with a backup file the script writes for them from an instance of its own; and two Standalone ones for Restore cars (E2E_RESTORE, #340).
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,11 +16,11 @@ fi
 
 port="${E2E_PORT:-5097}"
 export E2E_URL="http://127.0.0.1:${port}"
-# The app, the six waiting servers, the import fixture's source and the two import servers take ten ports from it: one already answering
-# (another run, another session's) would answer for them, and the tests would fail on its data (#236).
-for p in $(seq "$port" $((port + 9))); do
+# The app, the six waiting servers, the import fixture's source, the two import servers and the two restore servers take twelve ports from
+# it: one already answering (another run, another session's) would answer for them, and the tests would fail on its data (#236).
+for p in $(seq "$port" $((port + 11))); do
   if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${p}"; then
-    echo "Something already answers on port ${p} (this run takes ${port}-$((port + 9))): stop it, or choose another start with E2E_PORT." >&2
+    echo "Something already answers on port ${p} (this run takes ${port}-$((port + 11))): stop it, or choose another start with E2E_PORT." >&2
     exit 1
   fi
 done
@@ -238,6 +238,38 @@ for i in 0 1; do
 done
 export E2E_IMPORT="{${import},\"backup\":\"$fixtures/tankstat-backup.zip\"}"
 
+# Restore cars (src/frontend/tankstat-react/e2e/restore-cars.e2e.ts, #340): one Standalone server per size (ports + 10 and + 11), set up
+# like the shared one (root@example.com), with folders of its own: a restore's run holds SQLite's lock, and its people sign in.
+restore_app() {
+  local dir="${files}/restore-$1"
+  mkdir -p "$dir"
+  cd out
+  ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
+    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Imports__ScratchFolder="${dir}/scratch" \
+    DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json" Auth__Mode=Standalone \
+    exec dotnet Tankstat.Api.dll --urls "$2"
+}
+restore="" sep=""
+for i in 0 1; do
+  name="$([[ $i == 0 ]] && echo phone || echo desktop)" url="http://127.0.0.1:$((port + 10 + i))"
+  restore_app "$name" "$url" > "${files}/restore-${name}.log" 2>&1 &
+  pids+=($!)
+  pid=$!
+  if ! code="$(setup_code "${files}/restore-${name}.log" "$pid")" || ! answers "$url" "$pid"; then
+    echo "The restore server $name did not start on $url, or logged no setup code:" >&2
+    cat "${files}/restore-${name}.log" >&2
+    exit 1
+  fi
+  finish="{\"query\":\"mutation(\$i: SetupFinishInput!) { setupFinish(input: \$i) { restarting } }\",\"variables\":{\"i\":{\"code\":\"${code}\",\"email\":\"root@example.com\",\"password\":\"initial-password-1\",\"passwordConfirmation\":\"initial-password-1\"}}}"
+  if ! curl -sf -H 'Content-Type: application/json' -d "$finish" "$url/graphql" | grep -q '"restarting":false'; then
+    echo "The restore server $name's setup could not be finished:" >&2
+    cat "${files}/restore-${name}.log" >&2
+    exit 1
+  fi
+  restore+="${sep}\"$name\":{\"url\":\"$url\"}" sep=","
+done
+export E2E_RESTORE="{${restore}}"
+
 # Playwright runs from the web app's folder: its config, node_modules, test-results/ and playwright-report/ are there.
 web="$repo/src/frontend/tankstat-react"
 status=0
@@ -247,7 +279,7 @@ else
   version="$(cd "$web" && node -p "require('@playwright/test/package.json').version")"
   # As the host user, so nothing it writes (test-results/, the report) belongs to root; the web app's own node_modules, the image's browsers.
   # The whole repository is mounted: a test reads a backup file from tests/backend/contracts.
-  docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp -e E2E_URL -e E2E_SETUP -e E2E_IMPORT \
+  docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp -e E2E_URL -e E2E_SETUP -e E2E_IMPORT -e E2E_RESTORE \
     -v "$repo:$repo" -w "$web" "mcr.microsoft.com/playwright:v${version}-noble" npx playwright test "$@" || status=$?
 fi
 if [[ "$status" != 0 ]]; then
@@ -260,6 +292,8 @@ if [[ "$status" != 0 ]]; then
   for name in phone desktop; do
     echo "The import server $name's last log lines:" >&2
     tail -n 20 "${files}/import-$name.log" >&2
+    echo "The restore server $name's last log lines:" >&2
+    tail -n 20 "${files}/restore-$name.log" >&2
   done
   echo "In src/frontend/tankstat-react: the report: npx playwright show-report; a failed test's video: test-results/e2e/<test>/video.webm, its trace: npx playwright show-trace test-results/e2e/<test>/trace.zip" >&2
 fi
