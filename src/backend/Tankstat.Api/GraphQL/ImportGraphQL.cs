@@ -154,9 +154,9 @@ public sealed record ImportTyreChoiceInput(IReadOnlyList<Guid>? Sets, bool? NoSe
 /// What else of a car comes (#339): the photos of its logs, its picture, its charts (the shared ones and the importer's own), its dashboards.
 /// A picture or dashboard left out (null) comes when the car has none of its own.
 /// </summary>
-public sealed record ImportMediaChoiceInput(bool Photos, bool? Picture, bool Charts, bool? Dashboard)
+public sealed record ImportMediaChoiceInput(bool Photos, bool? Picture, bool Charts, bool? Dashboard, bool? OwnDashboard = null)
 {
-    public ImportMediaChoice ToChoice() => new(Photos, Picture, Charts, Dashboard);
+    public ImportMediaChoice ToChoice() => new(Photos, Picture, Charts, Dashboard, OwnDashboard);
 }
 
 /// <param name="Tyres">The tyres to import (#339); omit for none.</param>
@@ -176,10 +176,10 @@ public sealed record ImportCarChoiceInput(
 /// them, the pictures, charts new and here (and how many of the new are the importer's own), the dashboards.
 /// </summary>
 public sealed record ImportMediaReviewInfo(
-    int PhotosNew, int PhotosHere, bool PhotosLeftOut, bool Picture, bool TargetPicture, int ChartsNew, int ChartsHere, int OwnChartsNew, bool Dashboard, bool TargetDashboard, bool OwnDashboard)
+    int PhotosNew, int PhotosHere, bool PhotosLeftOut, bool Picture, bool TargetPicture, int ChartsNew, int ChartsHere, int OwnChartsNew, bool Dashboard, bool TargetDashboard, bool OwnDashboard, bool TargetOwnDashboard)
 {
     public static ImportMediaReviewInfo? From(ImportMediaReview? m) => m is null ? null
-        : new(m.PhotosNew, m.PhotosHere, m.PhotosLeftOut, m.Picture, m.TargetPicture, m.ChartsNew, m.ChartsHere, m.OwnChartsNew, m.Dashboard, m.TargetDashboard, m.OwnDashboard);
+        : new(m.PhotosNew, m.PhotosHere, m.PhotosLeftOut, m.Picture, m.TargetPicture, m.ChartsNew, m.ChartsHere, m.OwnChartsNew, m.Dashboard, m.TargetDashboard, m.OwnDashboard, m.TargetOwnDashboard);
 }
 
 public sealed record ImportMediaReportInfo(int Photos, int PhotosHere, bool Picture, int Charts, int ChartsHere, bool Dashboard, bool OwnDashboard, int TilesLeftOut);

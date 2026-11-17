@@ -163,6 +163,10 @@ public sealed partial class BackupImportRunTests
         var token = await OpenAsync(source.Database, source.Anna, source.Backup);
         var report = await ReportAsync(source.Database, (await StartAsync(source.Database, source.Anna, token, new ImportCarChoice(source.Car, null, Kinds: new(Media: all)))).Id);
         Assert.Equal((2, true, true, 0), (report.Media!.Charts, report.Media.Dashboard, report.Media.OwnDashboard, report.Media.TilesLeftOut));
+        // Her own dashboard has a box of its own: unticked, it stays out while the car's comes.
+        var without = await ReportAsync(source.Database, (await StartAsync(source.Database, source.Anna, await OpenAsync(source.Database, source.Anna, source.Backup),
+            new ImportCarChoice(source.Car, null, Kinds: new(Media: all with { OwnDashboard = false })))).Id);
+        Assert.Equal((true, false), (without.Media!.Dashboard, without.Media.OwnDashboard));
         await using (var db = await source.Database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
         {
             var mine = await db.VehicleCharts.Where(c => c.VehicleId == report.VehicleId).OrderBy(c => c.Title).Select(c => new { c.Title, c.IsShared }).ToListAsync();

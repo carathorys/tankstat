@@ -239,7 +239,8 @@ function MediaRows({ review, media, onMedia }: { review: CarReview; media: Media
     { key: 'photos', name: t('import.media.photosName'), hint: m.photosLeftOut ? t('import.media.noPhotos') : t('import.media.photosRow'), on: media.photos && !m.photosLeftOut, disabled: m.photosLeftOut, shown: m.photosLeftOut || m.photosNew + m.photosHere > 0 },
     { key: 'picture', name: t('import.media.pictureName'), hint: m.targetPicture ? t('import.media.pictureRow') : null, on: media.picture ?? !m.targetPicture, shown: m.picture },
     { key: 'charts', name: t('import.media.chartsName'), hint: t('import.media.chartsRow'), on: media.charts, shown: m.chartsNew + m.chartsHere > 0 },
-    { key: 'dashboard', name: t('import.media.dashboardName'), hint: m.targetDashboard ? t('import.media.dashboardRow') : null, on: media.dashboard ?? !m.targetDashboard, shown: m.dashboard || m.ownDashboard },
+    { key: 'dashboard', name: t('import.media.dashboardName'), hint: m.targetDashboard ? t('import.media.dashboardRow') : null, on: media.dashboard ?? !m.targetDashboard, shown: m.dashboard },
+    { key: 'ownDashboard', name: t('import.media.ownDashboardName'), hint: m.targetOwnDashboard ? t('import.media.ownDashboardRow') : null, on: media.ownDashboard ?? !m.targetOwnDashboard, shown: m.ownDashboard },
   ]
   return (
     <Stack sx={{ gap: 0.5 }}>

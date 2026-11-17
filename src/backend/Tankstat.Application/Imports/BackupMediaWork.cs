@@ -15,7 +15,7 @@ namespace Tankstat.Application.Imports;
 /// What else of a car is chosen (#339, the owner's choice: boxes, no Replace all): its log photos, its picture, its charts, its dashboard.
 /// A picture or dashboard left null is "as the car is": the backup's comes when the car has none of its own (a new car never has).
 /// </summary>
-public sealed record ImportMediaChoice(bool Photos = true, bool? Picture = null, bool Charts = true, bool? Dashboard = null);
+public sealed record ImportMediaChoice(bool Photos = true, bool? Picture = null, bool Charts = true, bool? Dashboard = null, bool? OwnDashboard = null);
 
 /// <summary>
 /// What the media of a backup's car are to the car they go into (#339). Photos: of the logs that come or are matched, new or here already
@@ -24,7 +24,7 @@ public sealed record ImportMediaChoice(bool Photos = true, bool? Picture = null,
 /// </summary>
 public sealed record ImportMediaReview(
     int PhotosNew, int PhotosHere, bool PhotosLeftOut, bool Picture, bool TargetPicture, int ChartsNew, int ChartsHere, int OwnChartsNew,
-    bool Dashboard, bool TargetDashboard, bool OwnDashboard);
+    bool Dashboard, bool TargetDashboard, bool OwnDashboard, bool TargetOwnDashboard = false);
 
 /// <summary>What came of a car's media: photos added and found here, the picture, widgets added and here, the dashboards and their tiles left out.</summary>
 public sealed record ImportMediaReport(int Photos, int PhotosHere, bool Picture, int Charts, int ChartsHere, bool Dashboard, bool OwnDashboard, int TilesLeftOut);
@@ -102,7 +102,7 @@ public sealed class BackupMediaWork(
         return new ImportMediaReview(fresh, here, media.PhotosLeftOut, media.PictureImageId is not null, target?.PictureImageId is not null,
             coming.Count - chartsHere, chartsHere, ownNew,
             media.Dashboards.Any(d => d.UserId is null), target is not null && await layouts.FindSharedAsync(target.Id, ct) is not null,
-            media.Dashboards.Any(d => d.UserId == me.Id));
+            media.Dashboards.Any(d => d.UserId == me.Id), target is not null && await layouts.FindPersonalAsync(me.Id, target.Id, ct) is not null);
     }
 
     /// <param name="logOf">Where a backup's log is in the car now; null when it did not come.</param>
@@ -164,6 +164,7 @@ public sealed class BackupMediaWork(
         // Left as the car is: the backup's picture and dashboard come when the car has none of its own (decided here, not by the page).
         var takePicture = choice.Picture ?? vehicle.PictureImageId is null;
         var takeDashboard = choice.Dashboard ?? await layouts.FindSharedAsync(vehicle.Id, ct) is null;
+        var takeOwn = choice.OwnDashboard ?? await layouts.FindPersonalAsync(me.Id, vehicle.Id, ct) is null; // the importer's own: a box of its own (the owner's choice)
         if (takePicture && media.PictureImageId is { } pictureId)
         {
             if (await file.ReadImageAsync(carId, null, pictureId, ImageFormat.MaxBytes, ct) is { } bytes)
@@ -196,8 +197,7 @@ public sealed class BackupMediaWork(
             }
         }
 
-        if (takeDashboard)
-            foreach (var layout in media.Dashboards.Where(d => d.UserId is null || d.UserId == me.Id))
+        foreach (var layout in media.Dashboards.Where(d => (d.UserId is null && takeDashboard) || (d.UserId == me.Id && takeOwn)))
             {
                 // Every chart tile pointed at the widget here; one whose widget did not come is left out, and counted.
                 string? Point(string entry) => DashboardLayoutValues.ChartIdOf(entry) is not { } id ? entry

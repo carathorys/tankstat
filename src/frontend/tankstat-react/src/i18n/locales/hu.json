@@ -1699,7 +1699,10 @@
       "tilesLeftOut_one": "Az irányítópult {{count}} csempéje kimaradt: a diagramja nem jött.",
       "tilesLeftOut_other": "Az irányítópult {{count}} csempéje kimaradt: a diagramjaik nem jöttek.",
       "photosLost_one": "Közülük {{count}} fotó nincs a mentésben, és végleg elvész.",
-      "photosLost_other": "Közülük {{count}} fotó nincs a mentésben, és végleg elvész."
+      "photosLost_other": "Közülük {{count}} fotó nincs a mentésben, és végleg elvész.",
+      "ownDashboardName": "A saját irányítópultom",
+      "ownDashboardRow": "Ha bejelölöd, a mentésé lecseréli az autóhoz tartozó saját irányítópultodat.",
+      "ownDashboardKept": "A(z) {{target}} autóhoz van saját irányítópultod; a mentését nem vesszük át."
     }
   },
   "welcome": {

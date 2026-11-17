@@ -714,6 +714,7 @@ type ImportMediaReviewInfo {
   dashboard: Boolean!
   targetDashboard: Boolean!
   ownDashboard: Boolean!
+  targetOwnDashboard: Boolean!
 }
 
 type ImportOwnCarInfo {
@@ -1914,6 +1915,7 @@ input ImportMediaChoiceInput {
   picture: Boolean
   charts: Boolean!
   dashboard: Boolean
+  ownDashboard: Boolean
 }
 
 input ImportTyreChoiceInput {

@@ -552,7 +552,7 @@ function useMediaReviewLines() {
     }
     if (m.dashboard)
       lines.push(dashboard ? (m.targetDashboard ? t('import.media.dashboardReplaces', { target }) : t('import.media.dashboardComes')) : m.targetDashboard ? t('import.media.dashboardKept', { target }) : '')
-    if (dashboard && m.ownDashboard) lines.push(t('import.media.ownDashboard'))
+    if (m.ownDashboard) lines.push((choice.ownDashboard ?? !m.targetOwnDashboard) ? t('import.media.ownDashboard') : m.targetOwnDashboard ? t('import.media.ownDashboardKept', { target }) : '')
     return lines.filter((line) => line !== '')
   }
 }

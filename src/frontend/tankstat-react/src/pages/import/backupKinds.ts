@@ -33,11 +33,13 @@ export interface MediaChoice {
   picture: boolean | null
   charts: boolean
   dashboard: boolean | null
+  /** The importer's own dashboard of the car: a box of its own (the owner's choice). */
+  ownDashboard: boolean | null
 }
-export const defaultMedia = (): MediaChoice => ({ photos: true, picture: null, charts: true, dashboard: null })
+export const defaultMedia = (): MediaChoice => ({ photos: true, picture: null, charts: true, dashboard: null, ownDashboard: null })
 
 /** The media as the server takes them: a picture or dashboard left as the car is (null) comes when the car has none, which the server decides. */
-export const mediaInput = (media: MediaChoice) => ({ photos: media.photos, picture: media.picture, charts: media.charts, dashboard: media.dashboard })
+export const mediaInput = (media: MediaChoice) => ({ photos: media.photos, picture: media.picture, charts: media.charts, dashboard: media.dashboard, ownDashboard: media.ownDashboard })
 
 /** The tyre choice as the server takes it. */
 export const tyresInput = (tyres: TyreChoice) => ({ except: tyres.except, noSetLines: tyres.noSetLines })

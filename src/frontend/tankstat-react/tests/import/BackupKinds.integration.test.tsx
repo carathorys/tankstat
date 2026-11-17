@@ -52,7 +52,7 @@ let TYRES: Record<string, unknown> = {}
 let MEDIA: Record<string, unknown> = {}
 const mediaOf = (over: Record<string, unknown> = {}) => ({
   __typename: 'ImportMediaReviewInfo', photosNew: 3, photosHere: 1, photosLeftOut: false, picture: true, targetPicture: true, chartsNew: 2, chartsHere: 0, ownChartsNew: 1,
-  dashboard: true, targetDashboard: true, ownDashboard: true, ...over,
+  dashboard: true, targetDashboard: true, ownDashboard: true, targetOwnDashboard: false, ...over,
 })
 const review = (car: Asked) => {
   const modes = { refueling: car.refuelings?.mode, expense: car.expenses?.mode, recurring: car.schedules?.mode } as Record<string, Mode | undefined>
@@ -205,7 +205,7 @@ it('a new car brings each kind whole or not at all, a box per kind with its coun
   const card = await screen.findByRole('region', { name: 'Octavia · a new car' })
   expect(within(card).getByText('No recurring expenses are imported.')).toBeInTheDocument()
   expect(within(card).getByText('Visits come without their link: expenses and recurring expenses are not both imported.')).toBeInTheDocument()
-  expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: null, schedules: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null } }])
+  expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: null, schedules: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null, ownDashboard: null } }])
 })
 
 it('the dialog picks entry by entry: tick and untick all, show more, keep mine or take the backup\'s for one or for all; Done says it on the kind', async () => {
@@ -249,7 +249,7 @@ it('the dialog picks entry by entry: tick and untick all, show more, keep mine o
   expect(await car.findByText("2 of 55 new are added; 2 of 3 that differ take the backup's values.")).toBeInTheDocument()
   // The picks travel as a default and its exceptions.
   await ui.click(screen.getByRole('button', { name: 'Next' }))
-  await waitFor(() => expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: 'v1', refuelings: { mode: 'CHOOSE', addNew: false, newExceptions: ['n1', 'n55'], takeBackups: true, differExceptions: ['d2'] }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null } }]))
+  await waitFor(() => expect(calls.reviews.at(-1)).toEqual([{ carId: 'c1', targetVehicleId: 'v1', refuelings: { mode: 'CHOOSE', addNew: false, newExceptions: ['n1', 'n55'], takeBackups: true, differExceptions: ['d2'] }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null, ownDashboard: null } }]))
 })
 
 it('the review says what each kind\'s choice does; a car with a Replace all is all or nothing and asks for its name, one car after the other', async () => {
@@ -296,8 +296,8 @@ it('the review says what each kind\'s choice does; a car with a Replace all is a
 
   await waitFor(() => expect(calls.starts).toHaveLength(1))
   expect(calls.starts[0].cars).toEqual([
-    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', refuelings: { mode: 'REPLACE_ALL' }, expenses: { mode: 'CHOOSE', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] }, schedules: { mode: 'REPLACE_ALL' }, confirmedName: '  my octavia ', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null } },
-    { carId: 'c2', targetVehicleId: 'v2', policy: 'IMPORT_THE_REST', refuelings: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null } },
+    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', refuelings: { mode: 'REPLACE_ALL' }, expenses: { mode: 'CHOOSE', addNew: true, newExceptions: [], takeBackups: false, differExceptions: [] }, schedules: { mode: 'REPLACE_ALL' }, confirmedName: '  my octavia ', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null, ownDashboard: null } },
+    { carId: 'c2', targetVehicleId: 'v2', policy: 'IMPORT_THE_REST', refuelings: { mode: 'DONT_IMPORT' }, tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null, ownDashboard: null } },
   ])
 })
 
@@ -464,6 +464,7 @@ it("the media come by their boxes: photos and charts ticked, the picture and the
   const dashboard = car.getByRole('checkbox', { name: 'The dashboard' })
   expect(dashboard).not.toBeChecked()
   expect(dashboard).toHaveAccessibleDescription("Ticked, the backup's replaces it for everyone who sees this car.")
+  expect(car.getByRole('checkbox', { name: 'My own dashboard' })).toBeChecked() // none of their own here yet
   await check(view.container)
 
   await ui.click(car.getByRole('checkbox', { name: 'Charts' }))

@@ -1699,7 +1699,10 @@
       "tilesLeftOut_one": "{{count}} tile of the dashboard was left out: its chart did not come.",
       "tilesLeftOut_other": "{{count}} tiles of the dashboard were left out: their charts did not come.",
       "photosLost_one": "{{count}} of their photos is not in the backup and is lost for good.",
-      "photosLost_other": "{{count}} of their photos are not in the backup and are lost for good."
+      "photosLost_other": "{{count}} of their photos are not in the backup and are lost for good.",
+      "ownDashboardName": "My own dashboard",
+      "ownDashboardRow": "Ticked, the backup's replaces your own dashboard of this car.",
+      "ownDashboardKept": "You have your own dashboard of {{target}}; the backup's is not taken."
     }
   },
   "welcome": {
