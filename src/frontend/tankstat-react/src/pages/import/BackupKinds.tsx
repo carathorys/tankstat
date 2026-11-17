@@ -56,7 +56,8 @@ export function KindsDisclosure({
           {t('import.kinds.closedHint')}
         </Typography>
       )}
-      <Stack id={panel} hidden={!open} sx={{ gap: 2, alignSelf: 'stretch' }}>
+      {/* `hidden` alone does not take a Stack out of the layout (its own `display: flex` wins over the attribute's). */}
+      <Stack id={panel} hidden={!open} sx={{ gap: 2, alignSelf: 'stretch', '&[hidden]': { display: 'none' } }}>
         {open &&
           (target ? (
             <TargetKinds token={token} car={car} target={target} kinds={kinds} onKinds={onKinds} />
