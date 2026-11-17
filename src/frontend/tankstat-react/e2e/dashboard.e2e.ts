@@ -517,12 +517,17 @@ test('makes figures shorter: each shows what its rows hold, down to two rows, an
 // ---- every figure down to two rows (#259) ------------------------------------------------------------------------------------
 
 const spentTile = (page: Page) => tile(page, 'thisMonth')
-/** The focus on `target` by the keyboard, so it is focus-visible and its tooltip opens (MUI opens one on a keyboard's focus only). */
+/**
+ * The focus on `target` by the keyboard, so it is focus-visible and its tooltip opens (MUI opens one on a keyboard's focus only). The
+ * Shift+Tab lands on the tab stop before it, which may be another figure's arrow: its tooltip opens for that moment and is still fading
+ * out when the target's opens, so the target's is the only one once that one is gone.
+ */
 const keyboardFocus = async (page: Page, target: Locator) => {
   await target.focus()
   await page.keyboard.press('Shift+Tab')
   await page.keyboard.press('Tab')
   await expect(target).toBeFocused()
+  await expect(page.locator('.MuiTooltip-popperClose')).toHaveCount(0)
 }
 /**
  * A tooltip opened by the keyboard closed again, and gone before the next one opens: Escape, then the focus off its button, since a figure
