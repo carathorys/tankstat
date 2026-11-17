@@ -188,4 +188,31 @@ public sealed partial class BackupImportRunTests
         var fills = await after.Refuelings.Where(r => r.VehicleId == car).Select(r => r.Id).ToListAsync();
         Assert.Equal(2, await after.LogPhotos.CountAsync(p => fills.Contains(p.LogId)));
     }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task APictureAndADashboardLeftAsTheCarIs_ComeWhenTheCarHasNone_AndADashboardAloneStillFindsTheChartsHere(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await MediaSourceAsync();
+        var bob = await PersonAsync(here, "Bob");
+        var (bare, pictured) = await AsAsync(here, bob, async sp =>
+        {
+            var bare = (await sp.GetRequiredService<VehicleService>().AddAsync("Bare", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            var pictured = (await sp.GetRequiredService<VehicleService>().AddAsync("Pictured", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<ImageService>().SetVehiclePictureAsync(pictured, Png(7), default);
+            await sp.GetRequiredService<DashboardService>().SaveAsync(pictured, false, new DashboardLayoutValues([], []), default);
+            return (bare, pictured);
+        });
+        async Task<ImportMediaReport> ImportAsync(Guid target, ImportMediaChoice choice) =>
+            (await ReportAsync(here, (await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), new ImportCarChoice(source.Car, target, Kinds: new(Media: choice)))).Id)).Media!;
+
+        // Nothing said about the picture or the dashboard (the page's panel never opened): they come to the car that has none, not over the other's.
+        Assert.Equal((true, true), (await ImportAsync(bare, new())) is var a ? (a.Picture, a.Dashboard) : default);
+        Assert.Equal((false, false), (await ImportAsync(pictured, new())) is var b ? (b.Picture, b.Dashboard) : default);
+
+        // The dashboard alone, ticked, over a car whose charts came before: its tile finds the chart here.
+        var alone = await ImportAsync(pictured, new(Photos: false, Picture: false, Charts: false, Dashboard: true));
+        Assert.Equal((0, true, 0), (alone.Charts, alone.Dashboard, alone.TilesLeftOut));
+        Assert.Equal(1, (await MediaOfAsync(here, pictured)).Tiles);
+    }
 }

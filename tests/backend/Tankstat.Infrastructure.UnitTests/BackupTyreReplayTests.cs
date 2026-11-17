@@ -30,9 +30,10 @@ public sealed partial class BackupImportRunTests
     /// figure changed after the break-up; a summer set with a price and a reading on its swap; an all-season set retired in storage; a
     /// line of no set with an amount and a note of the summer set.
     /// </summary>
-    private async Task<TyreSource> TyreSourceAsync()
+    /// <param name="wholeSetLines">Also lines for the whole winter set after it was broken up, one with an amount and one without, as the Seeder makes them.</param>
+    private async Task<TyreSource> TyreSourceAsync(bool wholeSetLines = false)
     {
-        var source = Instance("Sqlite", "tyres")!;
+        var source = Instance("Sqlite", wholeSetLines ? "tyres-whole" : "tyres")!;
         var anna = await PersonAsync(source, "Anna");
         var car = await AsAsync(source, anna, async sp =>
         {
@@ -67,6 +68,12 @@ public sealed partial class BackupImportRunTests
             await expenses.AddAsync(car, new ExpenseInput(D(2025, 6, 1), "Wheel alignment", "Tyres", 45, "EUR", null, null), default,
                 tyre: new ExpenseTyreDetails(TyreEntryKind.Other, null, LineId: Guid.NewGuid()));
             await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.Note, summer, D(2025, 7, 1), null, "Pressure checked"), default);
+            if (wholeSetLines)
+            {
+                await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.WheelBalancing, winter, D(2025, 2, 10), null, "All four"), default);
+                await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.PunctureRepaired, winter, D(2025, 12, 20), null, "Rear left", new TyreFee(15, "EUR", "Tyres", "Puncture")), default);
+                await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.StorageFee, winter, D(2024, 12, 1), null, null, new TyreFee(40, "EUR", "Tyres", "Storage")), default); // before the break-up
+            }
             return car;
         });
         var backup = await source.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
@@ -102,11 +109,13 @@ public sealed partial class BackupImportRunTests
         [.. (await sp.GetRequiredService<ExpenseService>().ListAsync(car, new ExpenseQuery(Take: 100), default))
             .Select(e => $"{e.Date} {e.Title} {e.Category} {N(e.Amount)} {e.Currency} {N(e.Cost?.Discount)} odo {e.Odometer} note {e.Note}").Order()];
 
-    [Theory, MemberData(nameof(Providers))]
-    public async Task ABackupsTyreHistory_ReplayedIntoACarWhoseLogsCameFirst_AnswersAsTheSourceCars(string provider)
+    public static TheoryData<string, bool> Histories => new() { { "Sqlite", false }, { "PostgreSql", false }, { "SqlServer", false }, { "Sqlite", true }, { "PostgreSql", true } };
+
+    [Theory, MemberData(nameof(Histories))]
+    public async Task ABackupsTyreHistory_ReplayedIntoACarWhoseLogsCameFirst_AnswersAsTheSourceCars(string provider, bool wholeSetLines)
     {
         if (Instance(provider, "here") is not { } here) return;
-        var source = await TyreSourceAsync();
+        var source = await TyreSourceAsync(wholeSetLines);
         var bob = await PersonAsync(here, "Bob");
         var token = await OpenAsync(here, bob, source.Backup);
         var file = here.Get<IBackupImportSessions>().Cars(bob.Id, token)!;

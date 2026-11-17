@@ -146,7 +146,7 @@ function useUnits() {
 const toInput = (choices: Record<string, Choice>, names: Record<string, string> = {}) =>
   Object.entries(choices)
     .filter(([, c]) => c.picked)
-    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: tyresInput(c.tyres), media: mediaInput(c.media, c.asNew), confirmedName: names[carId] }))
+    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), tyres: tyresInput(c.tyres), media: mediaInput(c.media), confirmedName: names[carId] }))
 
 // ---- 2. the cars ---------------------------------------------------------------------------------------------
 
@@ -539,14 +539,15 @@ function useMediaReviewLines() {
     const m = car.media
     if (!m) return []
     const target = car.targetName ?? ''
-    const { picture, dashboard } = mediaInput(choice, car.targetName == null)
+    const picture = choice.picture ?? !m.targetPicture
+    const dashboard = choice.dashboard ?? !m.targetDashboard
     const lines: string[] = []
     if (m.photosLeftOut) lines.push(t('import.media.noPhotos'))
     else if (choice.photos && m.photosNew + m.photosHere > 0) lines.push(t('import.media.photos', { count: m.photosNew, same: m.photosHere }))
     if (m.picture)
       lines.push(picture ? (m.targetPicture ? t('import.media.pictureReplaces', { target }) : t('import.media.pictureComes')) : m.targetPicture ? t('import.media.pictureKept', { target }) : '')
     if (choice.charts && m.chartsNew + m.chartsHere > 0) {
-      lines.push(t('import.media.charts', { count: m.chartsNew, same: m.chartsHere }))
+      lines.push(t('import.media.charts', { count: m.chartsNew - m.ownChartsNew, same: m.chartsHere }))
       if (m.ownChartsNew > 0) lines.push(t('import.media.ownCharts', { count: m.ownChartsNew }))
     }
     if (m.dashboard)

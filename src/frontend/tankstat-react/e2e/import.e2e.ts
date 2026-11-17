@@ -206,6 +206,11 @@ test.describe('from a Tankstat backup', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Corolla' })).toBeVisible()
     // The dashboard shows the imported chart.
     await expect(page.getByRole('heading', { name: 'Corolla spend' }).first()).toBeVisible()
+    // Its fill-up has its photo: one photo row, served by the app.
+    const car = (await cars(page, server.url)).filter((c) => c.name === 'Corolla').at(-1)!
+    const logs = await api<{ refuelings: { photos: { url: string }[] }[] }>(page, server.url, 'query($v: UUID!) { refuelings(vehicleId: $v) { photos { url } } }', { v: car.id })
+    expect(logs.refuelings[0].photos).toHaveLength(1)
+    expect((await page.request.get(`${server.url}${logs.refuelings[0].photos[0].url}`)).ok()).toBe(true)
     await page.getByRole('tab', { name: 'Tyres' }).click()
     await expect(page.getByRole('cell', { name: 'Nordic winter' }).first()).toBeVisible()
     // The puncture of W1 with its note and amount, on the tyre log.

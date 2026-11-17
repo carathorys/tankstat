@@ -36,13 +36,8 @@ export interface MediaChoice {
 }
 export const defaultMedia = (): MediaChoice => ({ photos: true, picture: null, charts: true, dashboard: null })
 
-/** The media as the server takes them: a picture or dashboard left as the car is comes to a new car, never over one of yours unseen. */
-export const mediaInput = (media: MediaChoice, asNew: boolean) => ({
-  photos: media.photos,
-  picture: media.picture ?? asNew,
-  charts: media.charts,
-  dashboard: media.dashboard ?? asNew,
-})
+/** The media as the server takes them: a picture or dashboard left as the car is (null) comes when the car has none, which the server decides. */
+export const mediaInput = (media: MediaChoice) => ({ photos: media.photos, picture: media.picture, charts: media.charts, dashboard: media.dashboard })
 
 /** The tyre choice as the server takes it. */
 export const tyresInput = (tyres: TyreChoice) => ({ except: tyres.except, noSetLines: tyres.noSetLines })

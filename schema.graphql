@@ -1911,9 +1911,9 @@ input ImportKindChoiceInput {
 
 input ImportMediaChoiceInput {
   photos: Boolean!
-  picture: Boolean!
+  picture: Boolean
   charts: Boolean!
-  dashboard: Boolean!
+  dashboard: Boolean
 }
 
 input ImportTyreChoiceInput {

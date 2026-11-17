@@ -439,9 +439,9 @@ export type ImportKindMode =
 
 export type ImportMediaChoiceInput = {
   charts: boolean;
-  dashboard: boolean;
+  dashboard?: boolean | null | undefined;
   photos: boolean;
-  picture: boolean;
+  picture?: boolean | null | undefined;
 };
 
 export type ImportRunFailure =

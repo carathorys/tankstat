@@ -11,8 +11,11 @@ using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Imports;
 
-/// <summary>What else of a car is chosen (#339, the owner's choice: boxes, no Replace all): its log photos, its picture, its charts, its dashboard.</summary>
-public sealed record ImportMediaChoice(bool Photos = true, bool Picture = false, bool Charts = true, bool Dashboard = false);
+/// <summary>
+/// What else of a car is chosen (#339, the owner's choice: boxes, no Replace all): its log photos, its picture, its charts, its dashboard.
+/// A picture or dashboard left null is "as the car is": the backup's comes when the car has none of its own (a new car never has).
+/// </summary>
+public sealed record ImportMediaChoice(bool Photos = true, bool? Picture = null, bool Charts = true, bool? Dashboard = null);
 
 /// <summary>
 /// What the media of a backup's car are to the car they go into (#339). Photos: of the logs that come or are matched, new or here already
@@ -158,22 +161,27 @@ public sealed class BackupMediaWork(
             }
         }
 
-        if (choice.Picture && media.PictureImageId is { } pictureId)
+        // Left as the car is: the backup's picture and dashboard come when the car has none of its own (decided here, not by the page).
+        var takePicture = choice.Picture ?? vehicle.PictureImageId is null;
+        var takeDashboard = choice.Dashboard ?? await layouts.FindSharedAsync(vehicle.Id, ct) is null;
+        if (takePicture && media.PictureImageId is { } pictureId)
         {
             if (await file.ReadImageAsync(carId, null, pictureId, ImageFormat.MaxBytes, ct) is { } bytes)
                 picture = await SavedAsync(() => images.SetVehiclePictureAsync(vehicle.Id, bytes, ct), PictureKind, null);
             else refused(new ImportRefusedEntry(PictureKind, null, null, "import.photoMissing", new Dictionary<string, string>()));
         }
 
+        // The widgets here are matched whatever is ticked: a dashboard taken without the charts still points its tiles at those here.
         var chartIds = new Dictionary<Guid, Guid>();
+        var visible = (await chartRows.ListVisibleAsync(vehicle.Id, me.Id, ct)).ToList();
+        foreach (var chart in Coming(media, me.Id))
+            if (visible.FirstOrDefault(v => Same(v, chart)) is { } same) chartIds[chart.Id] = same.Id;
         if (choice.Charts)
         {
-            var visible = (await chartRows.ListVisibleAsync(vehicle.Id, me.Id, ct)).ToList();
             foreach (var chart in Coming(media, me.Id))
             {
-                if (visible.FirstOrDefault(v => Same(v, chart)) is { } same)
+                if (chartIds.ContainsKey(chart.Id))
                 {
-                    chartIds[chart.Id] = same.Id;
                     chartsHere++;
                     step();
                     continue;
@@ -188,7 +196,7 @@ public sealed class BackupMediaWork(
             }
         }
 
-        if (choice.Dashboard)
+        if (takeDashboard)
             foreach (var layout in media.Dashboards.Where(d => d.UserId is null || d.UserId == me.Id))
             {
                 // Every chart tile pointed at the widget here; one whose widget did not come is left out, and counted.

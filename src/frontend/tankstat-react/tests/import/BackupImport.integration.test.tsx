@@ -191,8 +191,8 @@ it('the review says per car what is new, exists, differs and is in the trash; th
 
   expect(await screen.findByRole('status')).toHaveTextContent('Importing… car 1 of 2 · 310 of 470 entries')
   expect(calls.starts).toEqual([{ token: 't1', cars: [
-    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: false, charts: true, dashboard: false } },
-    { carId: 'c2', targetVehicleId: null, policy: 'LEAVE_CAR_OUT', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: true, charts: true, dashboard: true } },
+    { carId: 'c1', targetVehicleId: 'v1', policy: 'IMPORT_THE_REST', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null } },
+    { carId: 'c2', targetVehicleId: null, policy: 'LEAVE_CAR_OUT', tyres: { except: [], noSetLines: true }, media: { photos: true, picture: null, charts: true, dashboard: null } },
   ] }])
   expect(await screen.findByText('Import finished: 1 car.')).toBeInTheDocument()
   expect(screen.getByTestId('step')).toHaveTextContent('done')

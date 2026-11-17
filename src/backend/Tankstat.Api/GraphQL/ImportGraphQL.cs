@@ -150,8 +150,11 @@ public sealed record ImportTyreChoiceInput(IReadOnlyList<Guid>? Sets, bool? NoSe
     public ImportTyreChoice ToChoice() => new(Sets, NoSetLines ?? true, Except);
 }
 
-/// <summary>What else of a car comes (#339): the photos of its logs, its picture, its charts (the shared ones and the importer's own), its dashboards.</summary>
-public sealed record ImportMediaChoiceInput(bool Photos, bool Picture, bool Charts, bool Dashboard)
+/// <summary>
+/// What else of a car comes (#339): the photos of its logs, its picture, its charts (the shared ones and the importer's own), its dashboards.
+/// A picture or dashboard left out (null) comes when the car has none of its own.
+/// </summary>
+public sealed record ImportMediaChoiceInput(bool Photos, bool? Picture, bool Charts, bool? Dashboard)
 {
     public ImportMediaChoice ToChoice() => new(Photos, Picture, Charts, Dashboard);
 }

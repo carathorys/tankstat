@@ -234,11 +234,6 @@ function MediaRows({ review, media, onMedia }: { review: CarReview; media: Media
   const { t } = useTranslation()
   const ids = useId()
   const m = review.media
-  // A picture or dashboard left as the car is: taken unless the car has one of its own, once the comparison says.
-  useEffect(() => {
-    if (!m || (media.picture !== null && media.dashboard !== null)) return
-    onMedia({ ...media, picture: media.picture ?? !m.targetPicture, dashboard: media.dashboard ?? !m.targetDashboard })
-  }, [m, media, onMedia])
   if (!m) return null
   const rows: { key: keyof MediaChoice; name: string; hint: string | null; on: boolean; disabled?: boolean; shown: boolean }[] = [
     { key: 'photos', name: t('import.media.photosName'), hint: m.photosLeftOut ? t('import.media.noPhotos') : t('import.media.photosRow'), on: media.photos && !m.photosLeftOut, disabled: m.photosLeftOut, shown: m.photosLeftOut || m.photosNew + m.photosHere > 0 },
