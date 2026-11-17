@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -45,6 +47,28 @@ public class SharingAndDeleteLevelTests : IDisposable
 
     private static string? Key(JsonElement body) =>
         body.TryGetProperty("errors", out var e) ? e[0].GetProperty("extensions").GetProperty("key").GetString() : null;
+
+    [Fact]
+    public async Task AnEntryWhoseLoggerHasNoAccountAnyMore_SaysSo_WhileTheOwnersOwnDoNot()
+    {
+        // #340: a restored entry keeps who logged it, though that account may be gone; the app says so instead of a blank.
+        var u = await SignedInUsers();
+        var car = await AddVehicle(u.Alice);
+        await Share(u.Alice, car, u.BobId, "EDIT");
+        await Log(u.Alice, car, 1000);
+        await Log(u.Bob, car, 2000, "2026-09-02");
+        await using (var scope = _app.Factory.Services.CreateAsyncScope())
+        {
+            await using var db = await scope.ServiceProvider.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<Tankstat.Infrastructure.Persistence.AppDbContext>>().CreateDbContextAsync();
+            var bob = Guid.Parse(u.BobId);
+            await db.Users.Where(x => x.Id == bob).ExecuteDeleteAsync();
+        }
+
+        var rows = (await u.Alice.Gql("query($id: UUID!) { refuelings(vehicleId: $id) { odometer createdBy { id } createdByGone } }", new { id = car })).Data().GetProperty("refuelings");
+        var byOdometer = rows.EnumerateArray().ToDictionary(r => r.GetProperty("odometer").GetInt64());
+        Assert.Equal((JsonValueKind.Object, false), (byOdometer[1000].GetProperty("createdBy").ValueKind, byOdometer[1000].GetProperty("createdByGone").GetBoolean()));
+        Assert.Equal((JsonValueKind.Null, true), (byOdometer[2000].GetProperty("createdBy").ValueKind, byOdometer[2000].GetProperty("createdByGone").GetBoolean()));
+    }
 
     [Fact]
     public async Task StrangersSeeNothing_AndCannotLog()

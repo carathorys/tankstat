@@ -110,12 +110,13 @@ public class LogsGraphQLTests(ApiFixture api)
         var logged = Data(await Log(id, "2026-09-01", 12_000, volume: 41.5, cost: 79.9, currency: "huf", note: " road trip "));
         var logId = logged.GetProperty("logRefueling").GetProperty("id").GetString();
 
-        var list = Data(await Send("query($id: UUID!) { refuelings(vehicleId: $id) { id date volume totalCost currency odometer note isFullTank pricePerUnit canEdit canDelete createdBy { id } } refuelingCount(vehicleId: $id) }", new { id }));
+        var list = Data(await Send("query($id: UUID!) { refuelings(vehicleId: $id) { id date volume totalCost currency odometer note isFullTank pricePerUnit canEdit canDelete createdBy { id } createdByGone } refuelingCount(vehicleId: $id) }", new { id }));
         var row = list.GetProperty("refuelings")[0];
         Assert.Equal(("2026-09-01", "HUF", 12_000L, "road trip"), (row.GetProperty("date").GetString(), row.GetProperty("currency").GetString(), row.GetProperty("odometer").GetInt64(), row.GetProperty("note").GetString()));
         Assert.InRange(row.GetProperty("pricePerUnit").GetDecimal(), 1.92m, 1.93m); // 79.9 / 41.5
         Assert.True(row.GetProperty("canEdit").GetBoolean() && row.GetProperty("canDelete").GetBoolean());
         Assert.Equal(1, list.GetProperty("refuelingCount").GetInt32());
+        Assert.False(row.GetProperty("createdByGone").GetBoolean()); // sign-in off: the anonymous user's, no account gone (#340)
 
         Data(await Send("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { id } }",
             new { i = new { id = logId, date = "2026-09-02", volume = 30, totalCost = 50, odometer = 12_500, isFullTank = false } })); // currency omitted: kept

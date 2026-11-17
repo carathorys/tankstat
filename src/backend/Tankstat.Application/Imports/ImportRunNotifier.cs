@@ -83,6 +83,8 @@ public sealed class ImportRunNotifier(IUserRepository users, Notifier notifier, 
             {
                 var (how, number) = car.Restore.CameBack && recipient == car.Restore.OwnerId ? ("again", back)
                     : replaced.Count > 0 ? ("replaced", replaced.Sum(k => k.Imported)) : ("back", back);
+                // A car still here that got nothing back tells nobody (the owner's answer on #340); a gone one always tells.
+                if (!car.Restore.CameBack && number == 0 && replaced.Count == 0) continue;
                 drafts.Add(new NotificationDraft(recipient, NotificationKind.CarRestored, vehicle, NotificationRef.User(run.StartedById), NotificationArgs.Of(
                     ("actor", actor), ("vehicleName", car.TargetName ?? car.Name), ("date", date), ("how", how),
                     ("count", number.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("kinds", string.Join(",", replaced.Select(k => k.Kind))))));

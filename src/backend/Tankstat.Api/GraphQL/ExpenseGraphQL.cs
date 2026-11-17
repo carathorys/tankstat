@@ -65,6 +65,13 @@ public sealed class ExpenseExtensions
 
     public Task<UserRef?> GetCreatedBy([Parent] Expense expense, UserRefLoader users, CancellationToken ct) => users.LoadAsync(expense.CreatedById, ct);
 
+    /// <summary>
+    /// Who logged it has no account any more (#340: a restored entry keeps its creator): <c>createdBy</c> is null then, and so it is for the
+    /// anonymous user's entries (sign-in off), which this tells apart.
+    /// </summary>
+    public async Task<bool> GetCreatedByGone([Parent] Expense expense, UserRefLoader users, CancellationToken ct) =>
+        expense.CreatedById != Guid.Empty && await users.LoadAsync(expense.CreatedById, ct) is null;
+
     /// <summary>Who made its last change that counted (see <c>changedAt</c>, <c>lastChange</c>); null when nobody did (a photo) or no longer exists.</summary>
     public async Task<UserRef?> GetChangedBy([Parent] Expense expense, UserRefLoader users, CancellationToken ct) =>
         expense.ChangedById is { } id ? await users.LoadAsync(id, ct) : null;

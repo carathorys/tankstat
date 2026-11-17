@@ -316,6 +316,27 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(("replaced", "2", "refueling"), (told.Args["how"], told.Args["count"], told.Args["kinds"]));
     }
 
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACarStillHereThatGetsNothingBack_TellsNobody_ButTheAdministrators(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, ada, eve) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true), await PersonAsync(here, "Eve", admin: true));
+        var golf = await AsAsync(here, anna, async sp =>
+        {
+            var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RefuelingService>().LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default);
+            return golf;
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null)], default));
+        Assert.Equal(ImportRunState.Done, (await FinishedAsync(here, run.Id)).State);
+
+        Assert.Contains(await ToldAsync(here, eve.Id), n => n.Kind == NotificationKind.CarsRestored);
+        Assert.Empty(await NotificationsAsync(here, anna.Id)); // everything was here: the owner's answer on #340
+    }
+
     public static TheoryData<string, bool> Elsewhere => new() { { "Sqlite", false }, { "PostgreSql", false }, { "SqlServer", false }, { "Sqlite", true } };
 
     [Theory, MemberData(nameof(Elsewhere))]
