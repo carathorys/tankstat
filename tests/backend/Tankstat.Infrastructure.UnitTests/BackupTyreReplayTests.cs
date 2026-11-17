@@ -222,8 +222,9 @@ public sealed partial class BackupImportRunTests
         Assert.All(sets.Where(s => s != nokian), s => Assert.Equal(ImportSetState.New, s.State));
         Assert.Equal((3, 6, 5, 3), (nokian.Installations, nokian.Lines, nokian.Tyres, nokian.Expenses));
 
-        // The others chosen; one that collides only since the review is refused in the run, said in the report, and the others come.
-        var choice = new ImportCarChoice(source.Car, own, Kinds: new ImportCarKinds(Tyres: new([.. sets.Where(s => s != nokian).Select(s => s.Id)])));
+        // Every new set, as the page sends it (no ids); one that collides only since the start is refused in the run, said in the
+        // report, never left out without a word, and the others come.
+        var choice = new ImportCarChoice(source.Car, own, Kinds: new ImportCarKinds(Tyres: new(Sets: null)));
         var queued = await StartAsync(here, bob, token, choice);
         await AsAsync(here, bob, async sp =>
         {

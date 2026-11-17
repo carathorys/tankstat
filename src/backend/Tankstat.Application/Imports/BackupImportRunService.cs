@@ -94,6 +94,16 @@ public sealed class BackupImportRunService(
         return reviews;
     }
 
+    /// <summary>
+    /// "Every new set but these" (the page's way) turned into the sets new when the start is accepted, by id: a set the car's history
+    /// refuses by the time the run reaches it is then that set's refusal in the report, never left out without a word (#339). A set the
+    /// review already showed as unable to come stays out, as it did.
+    /// </summary>
+    private static ImportCarKinds? WithSetsNamed(ImportCarKinds? kinds, ImportTyreReview? tyres) =>
+        kinds?.Tyres is { Sets: null } choice && tyres is not null
+            ? kinds with { Tyres = choice with { Sets = [.. tyres.Sets.Where(s => s.State == ImportSetState.New && choice.Wants(s.Id)).Select(s => s.Id)], Except = null } }
+            : kinds;
+
     private static ImportKindReview KindReview<T>(string kind, ImportKindComparison<T> compared, ImportKindWork<T> work, int photosLost = 0) where T : IBackupEntry => new(
         kind, work.Mode, compared.Backup.Count, compared.New.Count, compared.Differ.Count, compared.Same.Count, compared.InTrash, work.Adds.Count, work.Takes.Count,
         compared.TargetIds.Count, compared.TargetTrashed, compared.WithPhotos, compared.OnTyreLines, photosLost);
@@ -158,7 +168,8 @@ public sealed class BackupImportRunService(
             if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
             var reviews = await ReviewAsync(token, choices, starting: true, ct); // every refusal that can be foreseen, before anything is queued
             var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
-                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes) + review.TyreSteps + review.MediaSteps, choice.Kinds))]);
+                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes) + review.TyreSteps + review.MediaSteps,
+                WithSetsNamed(choice.Kinds, review.Tyres)))]);
             var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
             // The file first: the queue ends a waiting run of this server that it holds no file for, so the row must never be there without it.
             runner.Enqueue(run.Id, me.Id, token);
