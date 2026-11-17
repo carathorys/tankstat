@@ -466,6 +466,7 @@ export type ImportRunState =
 
 export type ImportSetState =
   | 'HERE'
+  | 'IN_TRASH'
   | 'NEW'
   | 'REFUSED';
 

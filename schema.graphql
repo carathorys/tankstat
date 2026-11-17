@@ -2597,6 +2597,7 @@ enum ImportSetState {
   NEW
   HERE
   REFUSED
+  IN_TRASH
 }
 
 enum InstallationMeasure {

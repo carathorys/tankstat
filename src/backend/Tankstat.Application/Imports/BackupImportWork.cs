@@ -105,6 +105,19 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
         return target;
     }
 
+    /// <summary>The car with this id here, the trash included, whatever its units (#340: the Cars step's state).</summary>
+    public Task<Vehicle?> FindHereAsync(Guid carId, CancellationToken ct) => vehicles.FindIncludingDeletedAsync(carId, ct);
+
+    /// <summary>
+    /// A partial restore's (#340): what a car of a restore point brings when its tyres or media are left out of the choice: everything that
+    /// is missing, as a car that comes back whole does. One place, so the review, the plan and the run agree.
+    /// </summary>
+    public static ImportCarChoice ForRestore(ImportCarChoice choice)
+    {
+        var kinds = choice.Kinds ?? ImportCarKinds.Missing;
+        return choice with { Kinds = kinds with { Tyres = kinds.Tyres ?? new ImportTyreChoice(null), Media = kinds.Media ?? new ImportMediaChoice() } };
+    }
+
     /// <summary>
     /// A partial restore's target (#340, the owner's constraint: the car's id decides, never another car): the car with the same id here,
     /// whoever's it is now; null when it is gone. One in the trash is refused (<c>import.carInTrash</c>: restore it from the trash or empty the
@@ -180,7 +193,7 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
         var book = await file.ReadTyresAsync(carId, ct) ?? ImportTyreComparison.None.Backup;
         var here = target is null ? null : await tyreBooks.LoadAsync(target.Id, ct);
         var hereSets = here?.Sets.Where(s => !s.IsDeleted).ToList() ?? [];
-        var trashedIds = here?.Sets.Where(s => s.IsDeleted).Select(s => s.Id).ToHashSet() ?? [];
+        var trashedIds = byId ? here?.Sets.Where(s => s.IsDeleted).Select(s => s.Id).ToHashSet() ?? [] : [];
         static string Key(Domain.Tyres.TyreSet s) =>
             $"{s.Name.Trim().ToLowerInvariant()}|{s.Season}|{s.Size?.Trim().ToLowerInvariant()}|{s.Since.Year}-{s.Since.Month}";
         var taken = new HashSet<Guid>();
@@ -193,7 +206,8 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
             var expenses = lines.Where(l => book.ExpenseOf(l) is { IsDeleted: false }).Select(l => l.ExpenseId).Distinct().Count();
             var match = hereSets.FirstOrDefault(s => s.Id == set.Id && taken.Add(s.Id)) ?? (byId ? null : hereSets.FirstOrDefault(s => Key(s) == Key(set) && taken.Add(s.Id)));
             var (state, key, args) = (ImportSetState.New, (string?)null, (IReadOnlyDictionary<string, string>?)null);
-            if (match is not null || (byId && trashedIds.Contains(set.Id))) state = ImportSetState.Here;
+            if (match is not null) state = ImportSetState.Here;
+            else if (trashedIds.Contains(set.Id)) state = ImportSetState.InTrash; // a restore's (#340): said, and left in the trash
             else if (here is not null && target is not null)
             {
                 try
@@ -411,7 +425,6 @@ public sealed class BackupImportWork(
                 {
                     // Still here: only what is missing by id comes (unless chosen otherwise); its owner and sharing stay as they are today.
                     vehicle = here;
-                    before = await stamps.IdsAsync(vehicle.Id, ct);
                     compared = await rules.CompareAsync(car, vehicle, ct, byId: true);
                     if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, vehicle, ct, byId: true);
                     restoreReport = new ImportRestoreReport(vehicle.OwnerId, CameBack: false, 0, [], 0);
@@ -457,6 +470,9 @@ public sealed class BackupImportWork(
                     await recurring.DeleteAsync(id, ct);
                     deleted.Schedules++;
                 }
+            // What a car still here has once its replaced kinds went: the rows the restore makes from here on are stamped (#340), those
+            // that came back under the ids a purge freed among them.
+            if (restore && restoreReport is { CameBack: false }) before = await stamps.IdsAsync(vehicle.Id, ct);
         }
         catch (KeyedException e)
         {

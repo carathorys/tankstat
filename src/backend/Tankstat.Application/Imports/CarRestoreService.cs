@@ -63,7 +63,7 @@ public sealed class CarRestoreService(
     public async Task<RestoreCarPage> CarsAsync(string token, string? search, Guid? ownerId, int skip, int take, CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
-        var file = sessions.Cars(admin.Id, token) ?? throw BackupImportService.Expired();
+        var file = (sessions.Find(admin.Id, token) is { Origin: BackupFileOrigin.RestorePoint } ? sessions.Cars(admin.Id, token) : null) ?? throw BackupImportService.Expired();
         var words = search?.Trim();
         var matching = file.Summary.Cars
             .Where(c => ownerId is null || c.OwnerId == ownerId)
@@ -94,25 +94,16 @@ public sealed class CarRestoreService(
         var known = everyone.Select(u => u.Id).ToHashSet();
         var gone = grants.Where(g => !known.Contains(g.GranteeId)).Select(g => g.Name ?? "").ToList();
         var count = grants.Count(g => known.Contains(g.GranteeId) && g.GranteeId != car.OwnerId);
-        Domain.Vehicles.Vehicle? here;
-        try
-        {
-            here = await rules.RestoreTargetAsync(car, ct);
-        }
-        catch (DomainException e) when (e.Key == BackupImportRules.CarInTrashKey)
-        {
-            return new RestoreCarOffer(car, RestoreCarState.InTrash, null, null, 0, 0, 0, 0, count, gone, null);
-        }
-        catch (DomainException)
-        {
-            here = null; // other units: said by the review, which refuses it
-        }
+        var here = await rules.FindHereAsync(car.Id, ct);
+        if (here is { IsDeleted: true }) return new RestoreCarOffer(car, RestoreCarState.InTrash, null, null, 0, 0, 0, 0, count, gone, null);
         if (here is not null)
         {
+            var owner = everyone.FirstOrDefault(u => u.Id == here.OwnerId);
+            // In other units: still here, and the review says why it cannot come (nothing is converted).
+            if (here.Units != car.Units) return new RestoreCarOffer(car, RestoreCarState.Here, here.OwnerId, owner?.DisplayName, 0, 0, 0, 0, count, gone, null);
             var full = await file.ReadCarAsync(car.Id, ct);
             var compared = full is null ? null : await rules.CompareAsync(full, here, ct, byId: true);
             var tyres = await rules.CompareTyresAsync(file, car.Id, here, ct, byId: true);
-            var owner = everyone.FirstOrDefault(u => u.Id == here.OwnerId);
             return new RestoreCarOffer(car, RestoreCarState.Here, here.OwnerId, owner?.DisplayName,
                 compared?.Refuelings.New.Count ?? 0, compared?.Expenses.New.Count ?? 0, compared?.Schedules.New.Count ?? 0,
                 tyres.Sets.Count(s => s.Offer.State == ImportSetState.New), count, gone, null);
@@ -123,17 +114,17 @@ public sealed class CarRestoreService(
     }
 
     public Task<IReadOnlyList<ImportCarReview>> ReviewAsync(string token, IReadOnlyList<ImportCarChoice> choices, CancellationToken ct) =>
-        runs.ReviewAsync(token, choices, starting: false, ct, restore: true);
+        runs.ReviewAsync(token, [.. choices.Select(BackupImportRules.ForRestore)], starting: false, ct, restore: true);
 
     public Task<ImportEntryPage> EntriesAsync(string token, Guid carId, string kind, bool differing, int skip, int take, CancellationToken ct, ImportTyreChoice? tyres = null) =>
-        runs.EntriesAsync(token, carId, carId, kind, differing, skip, take, ct, tyres, restore: true);
+        runs.EntriesAsync(token, carId, carId, kind, differing, skip, take, ct, tyres ?? new ImportTyreChoice(null), restore: true);
 
     public async Task<ImportRunView> StartAsync(string token, IReadOnlyList<ImportCarChoice> choices, CancellationToken ct)
     {
         foreach (var choice in choices.Where(c => c.OwnerId is not null))
             if (await users.FindByIdAsync(choice.OwnerId!.Value, ct) is not { IsDisabled: false })
                 throw new NotFoundException("user.notFound", $"User {choice.OwnerId} does not exist.", new { Id = choice.OwnerId });
-        return await runs.StartAsync(token, choices, ct, restore: true);
+        return await runs.StartAsync(token, [.. choices.Select(BackupImportRules.ForRestore)], ct, restore: true);
     }
 
     /// <summary>The administrator's restore that goes or waits, else their latest one.</summary>

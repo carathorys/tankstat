@@ -197,8 +197,11 @@ public enum RestoreCarState
 /// </summary>
 public sealed record RestoreCarReview(RestoreCarState State, Guid OwnerId, string? OwnerName, IReadOnlyList<string> Access, IReadOnlyList<string> GoneAccess);
 
-/// <summary>What a backup's set is to the car (#339): new, here already (it stays as it is), or one the car's history refuses.</summary>
-public enum ImportSetState { New, Here, Refused }
+/// <summary>
+/// What a backup's set is to the car (#339): new, here already (it stays as it is), or one the car's history refuses; for a restore (#340)
+/// also one whose id is in the car's trash (said, and left there).
+/// </summary>
+public enum ImportSetState { New, Here, Refused, InTrash }
 
 /// <summary>A set of the backup as the Cars step offers it: its counts, and for a refused one the history's reason as everywhere.</summary>
 public sealed record ImportSetOffer(

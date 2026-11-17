@@ -24,6 +24,8 @@ using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Sync;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
+using Tankstat.Infrastructure.Imports;
 using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.UnitTests;
@@ -227,6 +229,7 @@ public sealed partial class BackupImportRunTests
         var newDave = User.CreateLocal("dave@example.com", "Dave New", false);
         await here.Get<Tankstat.Application.Users.IUserRepository>().AddAsync(newDave, default);
 
+        var sinceDevice = DateTimeOffset.UtcNow; // a device of Anna's downloaded the Golf now: the purged fill-up is gone for it
         var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
         for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
         var page = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().CarsAsync(status.Token, null, null, 0, 50, default));
@@ -264,5 +267,119 @@ public sealed partial class BackupImportRunTests
         Assert.DoesNotContain(mine, n => n.Kind is NotificationKind.CarRestored or NotificationKind.CarsRestored);
         // The Import page never shows a restore.
         Assert.Null(await AsAsync(here, ada, sp => sp.GetRequiredService<BackupImportRunService>().MineAsync(default)));
+        // The device downloads it again: the restored fill-up is listed, and not removed, though its own tombstone is still there.
+        var feed = await AsAsync(here, anna, sp => sp.GetRequiredService<Tankstat.Application.Sync.OfflineFeedService>().ChangesAsync(golf, null, sinceDevice, null, 200, default));
+        Assert.Contains(feed.Refuelings, r => r.Id == gone);
+        Assert.DoesNotContain(feed.Removed, r => r.Id == gone);
+        // The app's own lines name ids only: no car, no person's name or e-mail (EF Core's SQL lines, silenced by the shipped settings, aside).
+        var own = here.Log.Entries.Where(e => e.Category.StartsWith("Tankstat", StringComparison.Ordinal)).ToList();
+        foreach (var canary in new[] { "Golf", "Polo", "Fiat", "ABC-123", "dave@example.com", "Dave New" })
+            Assert.DoesNotContain(own, e => Tankstat.TestSupport.CapturedLog.Holds(e.Text, canary) || Tankstat.TestSupport.CapturedLog.Holds(e.ScopeText, canary));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task AReplaceAllOnAnotherPersonsCar_AsksForItsName_AndPutsTheBackupsEntriesBackAsTheyWere_TellingItsOwner(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, ada) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true));
+        var golf = await AsAsync(here, anna, async sp =>
+        {
+            var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            var fills = sp.GetRequiredService<RefuelingService>();
+            var first = (await fills.LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default)).Id;
+            await fills.UpdateAsync(first, new(Day, 41, 61, "EUR", 10_000, true, "edited"), default); // version 2
+            await fills.LogAsync(golf, new(Day.AddDays(10), 38, 57, "EUR", 10_600, true, null), default);
+            return golf;
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var before = await RowsOfAsync(here, golf);
+        await AsAsync(here, anna, async sp =>
+        {
+            var fills = sp.GetRequiredService<RefuelingService>();
+            var all = await fills.ListAsync(golf, new RefuelingQuery(Take: 10), default);
+            await fills.UpdateAsync(all.Single(r => r.Note == "edited").Id, new(Day, 42, 62, "EUR", 10_000, true, "again"), default);
+            return await fills.LogAsync(golf, new(Day.AddDays(20), 30, 45, "EUR", 11_000, true, null), default);
+        });
+
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var replace = new ImportCarKinds(Refuelings: new ImportKindChoice(ImportKindMode.ReplaceAll), Tyres: new ImportTyreChoice([]), Media: new ImportMediaChoice(false, false, false, false, false));
+        var unconfirmed = await Assert.ThrowsAsync<DomainException>(() => AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null, Kinds: replace)], default)));
+        Assert.Equal(BackupImportRules.ReplaceNotConfirmedKey, unconfirmed.Key);
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null, Kinds: replace, ConfirmedName: "golf")], default));
+        Assert.Equal(ImportRunState.Done, (await FinishedAsync(here, run.Id)).State);
+
+        var after = await RowsOfAsync(here, golf);
+        Assert.Equal(before["Refuelings"], after["Refuelings"]); // the backup's two, under their ids, by Anna, at their versions
+        Assert.Equal(anna.Id, Assert.Single(after["Vehicles"].Select(l => Guid.Parse(l.Split(' ')[2]))));
+        var told = Assert.Single(await ToldAsync(here, anna.Id), n => n.Kind == NotificationKind.CarRestored);
+        Assert.Equal(("replaced", "2", "refueling"), (told.Args["how"], told.Args["count"], told.Args["kinds"]));
+    }
+
+    public static TheoryData<string, bool> Elsewhere => new() { { "Sqlite", false }, { "PostgreSql", false }, { "SqlServer", false }, { "Sqlite", true } };
+
+    [Theory, MemberData(nameof(Elsewhere))]
+    public async Task ACarOfAnotherInstancesRestorePoint_ComesBackWhole_ToTheOwnerPicked_WithItsIdsAndItsTyresAsTheyWere(string provider, bool wholeSetLines)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await TyreSourceAsync(wholeSetLines);
+        var (ada, zoe) = (await PersonAsync(here, "Ada", admin: true), await PersonAsync(here, "Zoe"));
+        // Uploaded to the backups folder by hand: a restore point of this server now.
+        var folder = Path.Combine(_root, "here", "backups");
+        Directory.CreateDirectory(folder);
+        File.Copy(source.Backup, Path.Combine(folder, Path.GetFileName(source.Backup)));
+
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(source.Backup), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var offer = Assert.Single((await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().CarsAsync(status.Token, null, null, 0, 50, default))).Cars);
+        Assert.Equal(RestoreCarState.OwnerGone, offer.State); // nobody of that instance has an account here
+        // Nothing chosen for the tyres and the media: a car that comes back comes whole.
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(source.Car, null, OwnerId: zoe.Id)], default));
+        var ended = await FinishedAsync(here, run.Id);
+        Assert.Equal(ImportRunState.Done, ended.State);
+        Assert.Empty(ImportRunJson.Read<ImportRunReport>(ended.Report)!.Cars.Single().Refused);
+
+        var (theirs, ours) = (await RowsOfAsync(source.Database, source.Car), await RowsOfAsync(here, source.Car));
+        foreach (var table in theirs.Keys.Where(t => t is not ("Dashboards" or "ResourceGrants" or "VehicleCharts" or "LogPhotos")))
+        {
+            // The owner is Zoe now; who logged each row is still Anna, who has no account here.
+            List<string> actual = [.. ours[table].Select(l => l.Replace(zoe.Id.ToString(), source.Owner.Id.ToString())).Order(StringComparer.Ordinal)];
+            Assert.True(theirs[table].SequenceEqual(actual), $"{table}:\n  theirs:\n    {string.Join("\n    ", theirs[table])}\n  ours:\n    {string.Join("\n    ", actual)}");
+        }
+        var (a, b) = (await AsAsync(source.Database, source.Owner, sp => sp.GetRequiredService<TyreService>().OverviewAsync(source.Car, default)),
+            await AsAsync(here, zoe, sp => sp.GetRequiredService<TyreService>().OverviewAsync(source.Car, default)));
+        Assert.Equal(Picture(a!), Picture(b!));
+        Assert.Equal(await AsAsync(source.Database, source.Owner, sp => CostsAsync(sp, source.Car)), await AsAsync(here, zoe, sp => CostsAsync(sp, source.Car)));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACancelledRestore_LeavesNothing_AndTellsNoOwnerOrSharer(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, ada, eve) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true), await PersonAsync(here, "Eve", admin: true));
+        var golf = await AsAsync(here, anna, async sp =>
+        {
+            var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RefuelingService>().LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default);
+            return golf;
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        await AsAsync(here, anna, async sp =>
+        {
+            await sp.GetRequiredService<VehicleService>().DeleteAsync(golf, default);
+            return await sp.GetRequiredService<VehicleService>().EmptyTrashAsync(default);
+        });
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null)], default));
+        here.Get<BackupImportRunner>().Cancelling(run.Id, eve.Id);
+        await here.Get<BackupImportRunner>().TickAsync(default);
+
+        Assert.Equal((ImportRunState.NotFinished, ImportRunFailure.Cancelled), ((await FinishedAsync(here, run.Id)).State, (await FinishedAsync(here, run.Id)).Failure));
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            Assert.False(await db.Vehicles.IgnoreQueryFilters().AnyAsync(v => v.Id == golf));
+        Assert.Equal(NotificationKind.RestoreCancelled, Assert.Single(await ToldAsync(here, ada.Id)).Kind);
+        await Task.Delay(200);
+        Assert.Empty(await NotificationsAsync(here, anna.Id));
     }
 }
