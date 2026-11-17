@@ -1,6 +1,8 @@
 # Dependency updates, once a week. npm and NuGet come as one pull request per ecosystem for minor and patch versions, a major on its
 # own; the GitHub Actions are pinned by major (`@v4`), so every bump of one is a major: they come together, in one pull request. CI
 # runs on each, like on any pull request. Security updates are separate (the repository's Dependabot security updates) and not grouped.
+# The exception among the majors: the GraphQL code generator's packages (`@graphql-codegen/*`) come together, since its CLI and its
+# plugins must share one generation of their helpers and a major of one alone fails `codegen:check`.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,6 +11,9 @@ updates:
       interval: weekly
       day: monday
     groups:
+      graphql-codegen-major:
+        patterns: ["@graphql-codegen/*"]
+        update-types: [major]
       npm-minor-and-patch:
         update-types: [minor, patch]
     labels: [dependencies]
