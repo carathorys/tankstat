@@ -259,12 +259,13 @@ function KeyStep({
 
   async function tryKey(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const typed = String(new FormData(e.currentTarget).get('secret') ?? '').trim()
-    if (!status || !typed) return
+    // A passphrase is taken as typed (spaces too, as the full restore sends it); only an identity is trimmed.
+    const typed = String(new FormData(e.currentTarget).get('secret') ?? '')
+    if (!status || !typed.trim()) return
     setBusy(true)
     setError(undefined)
     try {
-      const { data } = await submit({ variables: { input: { token: status.token, passphrase: key === 'passphrase' ? typed : null, identity: key === 'identity' ? typed : null } } })
+      const { data } = await submit({ variables: { input: { token: status.token, passphrase: key === 'passphrase' ? typed : null, identity: key === 'identity' ? typed.trim() : null } } })
       if (data) await settle(data.submitCarRestoreKey)
     } catch (err) {
       setError(err)
