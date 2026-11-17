@@ -73,6 +73,9 @@ public sealed partial class BackupImportRunTests
                 await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.WheelBalancing, winter, D(2025, 2, 10), null, "All four"), default);
                 await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.PunctureRepaired, winter, D(2025, 12, 20), null, "Rear left", new TyreFee(15, "EUR", "Tyres", "Puncture")), default);
                 await tyres.AddEntryAsync(car, new TyreEntryInput(TyreEntryKind.StorageFee, winter, D(2024, 12, 1), null, null, new TyreFee(40, "EUR", "Tyres", "Storage")), default); // before the break-up
+                // The time on the car the rotation began moved to the trash: its tyres' places stay in the backup, hidden with it.
+                var rotated = (await tyres.OverviewAsync(car, default))!.Sets.Single(s => s.Set.Id == winter).Installations.Single(i => i.Installation.From == D(2026, 1, 10));
+                await tyres.TrashInstallationAsync(rotated.Installation.Id, default);
             }
             return car;
         });
@@ -183,7 +186,11 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(5, await ExpenseCountAsync(here, onlyExpenses.VehicleId!.Value));
         Assert.Equal((3, 0, 3), (later.Tyres!.Sets.Count, later.Tyres.Expenses, later.Tyres.AmountsHere)); // the swap's fee, the price and the replacement's: left on their lines
         await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        {
             Assert.Equal(2, await db.TyreEntries.Where(e => e.VehicleId == onlyExpenses.VehicleId && e.ExpenseId != null).Select(e => e.ExpenseId).Distinct().CountAsync()); // the puncture's and the alignment's tied
+            // The price's line comes without its amount, never left out.
+            Assert.Equal(1, await db.TyreEntries.CountAsync(e => e.VehicleId == onlyExpenses.VehicleId && e.Kind == TyreEntryKind.Bought && e.TyreId == null && e.ExpenseId == null));
+        }
 
         // A second tyres import finds every set here.
         var again = Assert.Single(await AsAsync(here, bob, async sp => await sp.GetRequiredService<BackupImportRunService>().ReviewAsync(

@@ -74,7 +74,9 @@ public sealed class BackupImportRunService(
             var fuelLost = target is not null && work.Refuelings.Purge ? await media.PhotosLostAsync(file, car.Car.Id, target, Domain.Photos.LogType.Refueling, photosComing, ct) : 0;
             var expensesLost = target is not null && work.Expenses.Purge ? await media.PhotosLostAsync(file, car.Car.Id, target, Domain.Photos.LogType.Expense, photosComing, ct) : 0;
             var mediaSteps = mediaChoice is null ? 0 : (mediaChoice.Photos ? mediaReview.PhotosNew + mediaReview.PhotosHere : 0) + ((mediaChoice.Picture ?? !mediaReview.TargetPicture) && mediaReview.Picture ? 1 : 0)
-                + (mediaChoice.Charts ? mediaReview.ChartsNew + mediaReview.ChartsHere : 0);
+                + (mediaChoice.Charts ? mediaReview.ChartsNew + mediaReview.ChartsHere : 0)
+                + ((mediaChoice.Dashboard ?? !mediaReview.TargetDashboard) && mediaReview.Dashboard ? 1 : 0)
+                + ((mediaChoice.OwnDashboard ?? !mediaReview.TargetOwnDashboard) && mediaReview.OwnDashboard ? 1 : 0);
             var (fuel, expenses, schedules) = (BackupImportRules.Left(compared.Refuelings, work.Refuelings), BackupImportRules.Left(compared.Expenses, work.Expenses), BackupImportRules.Left(compared.Schedules, work.Schedules));
             reviews.Add(new ImportCarReview(car.Car.Id, car.Car.Name, car.Car.OwnerName, car.Car.OwnerId == me.Id, target?.Id, target?.Name,
                 work.Refuelings.Adds.Count, work.Expenses.Adds.Count, work.Schedules.Adds.Count,

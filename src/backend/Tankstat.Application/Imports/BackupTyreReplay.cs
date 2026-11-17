@@ -103,25 +103,31 @@ public sealed class BackupTyreReplay(TyreService tyres, ExpenseService expenses)
         var installations = backup.Installations.Where(i => i.SetId == set.Id && !i.IsDeleted).OrderBy(i => i.From).ToList();
         var lines = LinesOf(backup, set.Id);
         var singles = backup.SingleTyres.Where(t => t.SetId == set.Id && !t.IsDeleted).ToList();
-        var places = backup.TyrePlaces.Where(p => !p.IsDeleted && singles.Any(t => t.Id == p.TyreId)).ToList();
+        // A place is live while its time on the car is too: one in a trashed installation is hidden with it, and comes with nothing.
+        var places = backup.TyrePlaces.Where(p => !p.IsDeleted && singles.Any(t => t.Id == p.TyreId) && installations.Any(i => i.Id == p.InstallationId)).ToList();
         var replacements = singles.Where(t => singles.Any(o => o.ReplacedById == t.Id)).Select(t => t.Id).ToHashSet();
         var originals = singles.Where(t => !replacements.Contains(t.Id)).OrderBy(t => t.Label, StringComparer.OrdinalIgnoreCase).ToList();
 
         // 1. Into storage. The rough figure is the one the tyres copied at the break-up (a later change of the set's does not reach them).
         var (rough, roughUntil) = set.IsBrokenUp && originals.Count > 0 ? (originals[0].RoughDistance, originals[0].RoughUntil) : (set.RoughDistance, set.RoughUntil);
-        var bought = lines.FirstOrDefault(l => l.Kind == TyreEntryKind.Bought && l.TyreId is null && run.ExpenseOf(l) is not null);
+        // A price is an amount: an expense left without one is the set's other lines' way (the expense service makes it).
+        var bought = lines.FirstOrDefault(l => l.Kind == TyreEntryKind.Bought && l.TyreId is null && run.ExpenseOf(l) is { Amount: not null });
+        var price = bought is null ? null : run.FeeOf(bought); // none when the same expense is the car's already
         var day = roughUntil ?? (installations.Count > 0 ? installations[0].From : set.Since);
         await tyres.AddSetAsync(new NewTyreSet(
             vehicleId, new TyreSetInput(set.Name, set.Season, set.Size, set.Since, set.MadeWeek, set.MadeYear, rough, set.UsualMonths?.ToList(), set.ReminderMonth),
-            Fitted: false, day, Odometer: null, PairOneFront: null, Price: bought is null ? null : run.FeeOf(bought), BoughtOn: bought?.Day, BoughtEntryId: run.Map(bought?.Id)),
+            Fitted: false, day, Odometer: null, PairOneFront: null, Price: price, BoughtOn: price is null ? null : bought?.Day, BoughtEntryId: price is null ? null : run.Map(bought?.Id)),
             ct, id: newSet);
         var done = new HashSet<Guid>();
         if (bought is not null)
         {
             done.Add(bought.Id);
             run.Lines++;
-            if (bought.Note is not null || bought.Odometer is not null)
-                await tyres.UpdateEntryAsync(run.New(bought.Id), new TyreEntryInput(bought.Kind, newSet, bought.Day, bought.Odometer, bought.Note, run.FeeOf(bought)), ct);
+            // Without a price the set makes no Bought line: it comes as a line of its own, without its amount (the report says it is here).
+            if (price is null)
+                await tyres.AddEntryAsync(vehicleId, new TyreEntryInput(bought.Kind, newSet, bought.Day, bought.Odometer, bought.Note), ct, id: run.New(bought.Id));
+            else if (bought.Note is not null || bought.Odometer is not null)
+                await tyres.UpdateEntryAsync(run.New(bought.Id), new TyreEntryInput(bought.Kind, newSet, bought.Day, bought.Odometer, bought.Note, price), ct);
         }
 
         // 2. Its times on the car (the line of one starting the day the set came off is a change of positions, as the service sees it).

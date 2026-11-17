@@ -111,16 +111,23 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
         foreach (var candidate in candidates)
         {
             if (zip.GetEntry(candidate) is not { } entry) continue;
-            await using var stream = entry.Open();
-            var buffer = new MemoryStream();
-            var chunk = new byte[81920];
-            int read;
-            while ((read = await stream.ReadAsync(chunk, ct)) > 0)
+            try
             {
-                buffer.Write(chunk, 0, read);
-                if (buffer.Length > maxBytes) break; // one more than allowed is enough to refuse it
+                await using var stream = entry.Open();
+                var buffer = new MemoryStream();
+                var chunk = new byte[81920];
+                int read;
+                while ((read = await stream.ReadAsync(chunk, ct)) > 0)
+                {
+                    buffer.Write(chunk, 0, read);
+                    if (buffer.Length > maxBytes) break; // one more than allowed is enough to refuse it
+                }
+                return buffer.ToArray();
             }
-            return buffer.ToArray();
+            catch (InvalidDataException)
+            {
+                return null; // a damaged entry (the file is the uploader's) is one the file has not: that photo is missing, the rest goes on
+            }
         }
         return null;
     }

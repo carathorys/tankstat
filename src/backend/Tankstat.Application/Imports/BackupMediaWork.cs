@@ -169,7 +169,11 @@ public sealed class BackupMediaWork(
         {
             if (await file.ReadImageAsync(carId, null, pictureId, ImageFormat.MaxBytes, ct) is { } bytes)
                 picture = await SavedAsync(() => images.SetVehiclePictureAsync(vehicle.Id, bytes, ct), PictureKind, null);
-            else refused(new ImportRefusedEntry(PictureKind, null, null, "import.photoMissing", new Dictionary<string, string>()));
+            else
+            {
+                step();
+                refused(new ImportRefusedEntry(PictureKind, null, null, "import.photoMissing", new Dictionary<string, string>()));
+            }
         }
 
         // The widgets here are matched whatever is ticked: a dashboard taken without the charts still points its tiles at those here.
