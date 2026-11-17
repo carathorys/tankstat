@@ -141,10 +141,13 @@ public sealed record ImportKindChoiceInput(ImportKindMode Mode, bool? AddNew, IR
 /// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported. A car with a <c>REPLACE_ALL</c> is always all or nothing.</param>
 /// <param name="Refuelings">What comes of its refuellings; omit for only the missing. A new car's kind comes whole unless it is <c>DONT_IMPORT</c>.</param>
 /// <param name="ConfirmedName">The target car's name as the person typed it: a start with a <c>REPLACE_ALL</c> is refused without it.</param>
-/// <summary>The tyres chosen of a car (#339): the backup's sets by id (one here or refused is left out), and whether the lines of no set come.</summary>
-public sealed record ImportTyreChoiceInput(IReadOnlyList<Guid> Sets, bool? NoSetLines)
+/// <summary>
+/// The tyres chosen of a car (#339): the backup's sets by id, or (<c>sets</c> left out) every new set but those in <c>except</c>; one here or
+/// refused is left out. <c>noSetLines</c> (true when omitted): the lines of no set come.
+/// </summary>
+public sealed record ImportTyreChoiceInput(IReadOnlyList<Guid>? Sets, bool? NoSetLines, IReadOnlyList<Guid>? Except = null)
 {
-    public ImportTyreChoice ToChoice() => new(Sets, NoSetLines ?? true);
+    public ImportTyreChoice ToChoice() => new(Sets, NoSetLines ?? true, Except);
 }
 
 /// <param name="Tyres">The tyres to import (#339); omit for none.</param>

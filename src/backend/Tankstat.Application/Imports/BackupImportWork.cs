@@ -62,7 +62,7 @@ public sealed record ImportTyreComparison(Tyres.TyreBook Backup, IReadOnlyList<(
     public static readonly ImportTyreComparison None = new(new Tyres.TyreBook([], [], [], []), [], []);
 
     public IReadOnlyList<Domain.Tyres.TyreSet> Chosen(ImportTyreChoice? choice) =>
-        choice is null ? [] : [.. Sets.Where(s => s.Offer.State == ImportSetState.New && choice.Sets.Contains(s.Set.Id)).Select(s => s.Set)];
+        choice is null ? [] : [.. Sets.Where(s => s.Offer.State == ImportSetState.New && choice.Wants(s.Set.Id)).Select(s => s.Set)];
 
     public IReadOnlySet<Guid> ExpensesOf(ImportTyreChoice? choice)
     {
@@ -491,7 +491,7 @@ public sealed class BackupImportWork(
                 .Where(e => !heldByLines.Contains(e.Id)).Select(e => (e.Id, e.Date, e.Title, e.Amount)));
             var (names, lines, singles, noSet, made, amountsHere) = (new List<string>(), 0, 0, 0, 0, 0);
             // A chosen set the car's history refuses now (it changed since the review) is that set's refusal; one here now stays as it is.
-            foreach (var (set, offer) in tyres.Sets.Where(s => s.Offer.State == ImportSetState.Refused && tyreChoice.Sets.Contains(s.Set.Id)))
+            foreach (var (set, offer) in tyres.Sets.Where(s => s.Offer.State == ImportSetState.Refused && tyreChoice.Sets?.Contains(s.Set.Id) == true))
             {
                 step();
                 Refused(new ImportRefusedEntry(TyreSetKind, null, offer.Name, offer.RefusalKey!, offer.RefusalArgs ?? new Dictionary<string, string>()));

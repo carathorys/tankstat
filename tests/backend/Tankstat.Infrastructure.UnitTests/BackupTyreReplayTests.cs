@@ -155,11 +155,15 @@ public sealed partial class BackupImportRunTests
         async Task<ImportCarReport> RunAsync(ImportCarChoice choice) =>
             ImportRunJson.Read<ImportRunReport>((await FinishedAsync(here, (await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), choice)).Id)).Report)!.Cars.Single();
 
-        var both = await RunAsync(new(source.Car, null, Kinds: new ImportCarKinds(Tyres: new(all))));
+        var both = await RunAsync(new(source.Car, null, Kinds: new ImportCarKinds(Tyres: new(Sets: null)))); // every new set, as the page starts
         Assert.Equal((5, 3, 0), (await ExpenseCountAsync(here, both.VehicleId!.Value), both.Tyres!.Sets.Count, both.Tyres.AmountsHere));
         Assert.Equal(0, both.Expenses); // every one came with its line
         var onlyTyres = await RunAsync(new(source.Car, null, Kinds: new ImportCarKinds(Expenses: new(ImportKindMode.DontImport), Tyres: new(all))));
         Assert.Equal((5, 5), (await ExpenseCountAsync(here, onlyTyres.VehicleId!.Value), onlyTyres.Tyres!.Expenses));
+        // Every new set but one: the old all-season stays out.
+        var but = await RunAsync(new(source.Car, null, Kinds: new ImportCarKinds(Expenses: new(ImportKindMode.DontImport), Tyres: new(null, NoSetLines: false, Except: [all[0]]))));
+        Assert.Equal((2, 0), (but.Tyres!.Sets.Count, but.Tyres.NoSetLines));
+        Assert.Equal(4, await ExpenseCountAsync(here, but.VehicleId!.Value)); // the alignment, a line of no set, stays out with its line
         var onlyExpenses = await RunAsync(new(source.Car, null));
         Assert.Equal((5, 5, null), (await ExpenseCountAsync(here, onlyExpenses.VehicleId!.Value), onlyExpenses.Expenses, onlyExpenses.Tyres));
         Assert.Empty(await SetNamesAsync(here, onlyExpenses.VehicleId!.Value));

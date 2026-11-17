@@ -1880,8 +1880,9 @@ input ImportKindChoiceInput {
 }
 
 input ImportTyreChoiceInput {
-  sets: [UUID!]!
+  sets: [UUID!]
   noSetLines: Boolean
+  except: [UUID!]
 }
 
 input LoginInput {

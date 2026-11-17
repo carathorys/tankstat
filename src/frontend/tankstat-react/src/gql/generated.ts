@@ -454,8 +454,9 @@ export type ImportRunState =
   | 'WAITING';
 
 export type ImportTyreChoiceInput = {
+  except?: Array<string> | null | undefined;
   noSetLines?: boolean | null | undefined;
-  sets: Array<string>;
+  sets?: Array<string> | null | undefined;
 };
 
 export type InstallationMeasure =

@@ -205,7 +205,7 @@ public class ContractTests
     [InlineData("OpenBackupImportInput", "token", "passphrase")]
     [InlineData("StartBackupImportInput", "token", "cars")]
     [InlineData("ImportCarChoiceInput", "carId", "targetVehicleId", "policy", "refuelings", "expenses", "schedules", "confirmedName", "tyres")]
-    [InlineData("ImportTyreChoiceInput", "sets", "noSetLines")]
+    [InlineData("ImportTyreChoiceInput", "sets", "noSetLines", "except")]
     [InlineData("ImportKindChoiceInput", "mode", "addNew", "newExceptions", "takeBackups", "differExceptions")]
     [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "discount", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp", "id")]
     [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "discount", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]

@@ -34,7 +34,12 @@ public sealed record ImportKindChoice(
 /// stays as it is, one the history would refuse cannot come), and whether the tyre log's lines of no set come (in a car that is here only
 /// the missing ones).
 /// </summary>
-public sealed record ImportTyreChoice(IReadOnlyList<Guid> Sets, bool NoSetLines = true);
+/// <param name="Sets">The sets by id; null for every new set (the page's default: they start ticked).</param>
+/// <param name="Except">Sets not to import, when <paramref name="Sets"/> is null.</param>
+public sealed record ImportTyreChoice(IReadOnlyList<Guid>? Sets, bool NoSetLines = true, IReadOnlyList<Guid>? Except = null)
+{
+    public bool Wants(Guid setId) => Sets is { } sets ? sets.Contains(setId) : Except?.Contains(setId) != true;
+}
 
 /// <summary>The kinds' choices for a car; a log kind left out is <see cref="ImportKindChoice.Missing"/>, the tyres left out do not come (#337's way).</summary>
 public sealed record ImportCarKinds(ImportKindChoice? Refuelings = null, ImportKindChoice? Expenses = null, ImportKindChoice? Schedules = null, ImportTyreChoice? Tyres = null)
@@ -42,7 +47,7 @@ public sealed record ImportCarKinds(ImportKindChoice? Refuelings = null, ImportK
     public static readonly ImportCarKinds Missing = new();
 
     /// <summary>Tyres chosen: a set, or the lines of no set.</summary>
-    public bool AnyTyres => Tyres is { } t && (t.Sets.Count > 0 || t.NoSetLines);
+    public bool AnyTyres => Tyres is { } t && (t.Sets is null || t.Sets.Count > 0 || t.NoSetLines);
 
     [JsonIgnore] // worked out: kept in a run's plan, it would write every exception's id twice
     public IEnumerable<ImportKindChoice> All => [Refuelings ?? ImportKindChoice.Missing, Expenses ?? ImportKindChoice.Missing, Schedules ?? ImportKindChoice.Missing];
