@@ -48,6 +48,7 @@ public sealed record ImportCarKinds(
     public static readonly ImportCarKinds Missing = new();
 
     /// <summary>Tyres chosen: a set, or the lines of no set.</summary>
+    [JsonIgnore] // worked out
     public bool AnyTyres => Tyres is { } t && (t.Sets is null || t.Sets.Count > 0 || t.NoSetLines);
 
     [JsonIgnore] // worked out: kept in a run's plan, it would write every exception's id twice
