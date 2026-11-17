@@ -17,6 +17,13 @@ const api = async <T>(client: APIRequestContext, query: string, variables?: Reco
 }
 const LOGIN = 'mutation($i: LoginInput!) { login(input: $i) { id } }'
 
+/** Signs a request context in on the restore server (its address absolute: the page's base URL is the shared server's). */
+const signInAt = async (client: APIRequestContext, url: string, who: { email: string; password: string }) => {
+  const response = await client.post(`${url}/graphql`, { data: { query: LOGIN, variables: { i: who } } })
+  const body = (await response.json()) as { data?: { login?: { id: string } }; errors?: { message: string }[] }
+  expect(body.errors ?? [], 'the sign-in').toEqual([])
+}
+
 test('an administrator restores a purged car of a user from a restore point, and the user finds it again', async ({ page }) => {
   const server = restoreServer()
   const id = tag()
@@ -41,9 +48,9 @@ test('an administrator restores a purged car of a user from a restore point, and
         i: { vehicleId: vehicle, date, volume: 40, totalCost: 24000, currency: 'HUF', odometer, isFullTank: true },
       })
 
-    // The administrator backs up on the Backups page.
-    await page.goto(`${server.url}/`)
-    await page.request.post(`${server.url}/graphql`, { data: { query: LOGIN, variables: { i: ADMIN } } })
+    // The administrator backs up on the Backups page: signed in before the page loads, so no answer of the page's own (a cookie
+    // renewed or cleared) can cross the sign-in.
+    await signInAt(page.request, server.url, ADMIN)
     await page.goto(`${server.url}/admin/backups`)
     await pageLoaded(page)
     await page.getByRole('button', { name: 'Back up now' }).click()
@@ -77,8 +84,9 @@ test('an administrator restores a purged car of a user from a restore point, and
     await expectSoundLayout(page)
 
     // The user signs in on this device: the car is back with its refuellings, and the bell says so.
+    await page.goto('about:blank')
     await page.context().clearCookies()
-    await page.request.post(`${server.url}/graphql`, { data: { query: LOGIN, variables: { i: { email: owner.email, password: owner.password } } } })
+    await signInAt(page.request, server.url, { email: owner.email, password: owner.password })
     await page.goto(`${server.url}/vehicles/${vehicle}`)
     await expect(page.getByRole('heading', { level: 1, name: car })).toBeVisible()
     await page.getByRole('tab', { name: 'Refuelings' }).click()
