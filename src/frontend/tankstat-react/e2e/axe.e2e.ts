@@ -109,13 +109,16 @@ test('a scan waits for what fades in inside the part it scans (#319)', async ({ 
   const dialog = page.getByRole('dialog', { name: 'Add widget' })
   await expect(dialog).toBeVisible()
   await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1')
-  await page.addStyleTag({ content: '.tk-fade { animation-duration: 3s !important; }' })
+  // The fade stretched; and an animation that never ends (as a spinner's) on the dialog's title, which the scan must not wait for.
+  await page.addStyleTag({ content: '.tk-fade { animation-duration: 3s !important; } @keyframes zz-endless { to { transform: none; } } [role="dialog"] h2 { animation: zz-endless 1s linear infinite; }' })
   await dialog.getByRole('button', { name: /^From scratch/ }).click()
   await expect(dialog.getByRole('combobox', { name: 'What it shows' })).toBeVisible()
-  // The panel is still fading in (the check that would have caught the old helper scanning too early).
-  expect(await page.evaluate(() => document.getAnimations().some((a) => (a as CSSAnimation).animationName === 'tk-fade' && a.playState === 'running'
-    && ((a.effect as KeyframeEffect).target as Element).closest('[role="dialog"]') !== null))).toBe(true)
+  const fading = () => page.evaluate(() => document.getAnimations().some((a) => (a as CSSAnimation).animationName === 'tk-fade' && a.playState === 'running'
+    && ((a.effect as KeyframeEffect).target as Element).closest('[role="dialog"]') !== null))
+  expect(await fading()).toBe(true) // the panel is still fading in when the scan is asked for
   expect(await violations(page, '[role="dialog"]')).toEqual([])
+  // The scan ran only once it had faded in: a desktop's axe does not judge the dimmed pick, so this says it at both sizes.
+  expect(await fading()).toBe(false)
 })
 
 // The solid fills (#235): a primary button under the pointer, and a red confirmation at rest and under it, in both schemes; a hover is
