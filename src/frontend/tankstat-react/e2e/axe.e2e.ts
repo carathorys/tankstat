@@ -96,6 +96,28 @@ test('a vehicle\'s dashboard, shown and being arranged, has no axe violations', 
   expect(await violations(page, '[role="dialog"]')).toEqual([])
 })
 
+// #319: a part that fades in inside the scanned one is waited for. The builder's period panel fades in (`tk-fade`); stretched to 3 s
+// here, a scan right after *From scratch* would measure its text dimmed (a contrast violation) unless the scan waits for it to end.
+test('a scan waits for what fades in inside the part it scans (#319)', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await page.goto(`/vehicles/${vehicle.id}`)
+  await pageLoaded(page)
+  await expect(page.getByRole('heading', { name: 'Monthly costs' })).toBeVisible()
+  await page.getByRole('button', { name: 'Customize' }).click()
+  await expect(page.getByRole('button', { name: 'Save dashboard' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add widget' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add widget' })
+  await expect(dialog).toBeVisible()
+  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1')
+  await page.addStyleTag({ content: '.tk-fade { animation-duration: 3s !important; }' })
+  await dialog.getByRole('button', { name: /^From scratch/ }).click()
+  await expect(dialog.getByRole('combobox', { name: 'What it shows' })).toBeVisible()
+  // The panel is still fading in (the check that would have caught the old helper scanning too early).
+  expect(await page.evaluate(() => document.getAnimations().some((a) => (a as CSSAnimation).animationName === 'tk-fade' && a.playState === 'running'
+    && ((a.effect as KeyframeEffect).target as Element).closest('[role="dialog"]') !== null))).toBe(true)
+  expect(await violations(page, '[role="dialog"]')).toEqual([])
+})
+
 // The solid fills (#235): a primary button under the pointer, and a red confirmation at rest and under it, in both schemes; a hover is
 // a pointer's, so on a desktop only. Each scan waits for the fill to be the hover's (MUI's 250 ms transition), as it is drawn.
 for (const scheme of ['dark', 'light'] as const) {
