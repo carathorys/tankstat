@@ -163,7 +163,7 @@ public sealed class AccessService(
     {
         if (isAdmin || userId == vehicle.OwnerId) return AccessLevel.Delete;
         var defaults = (await SettingsAsync(ct)).DefaultLevelForOthers;
-        var level = AccessPolicy.Resolve(userId, false, vehicle.OwnerId, defaults, await grants.ListForGranteeAsync(userId, ct));
+        var level = AccessPolicy.Resolve(userId, false, vehicle.OwnerId, defaults, await GrantsAsync(userId, ct));
         var grant = await resourceGrants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct);
         return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)(grant?.Level ?? AccessLevel.None));
     }
