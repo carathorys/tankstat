@@ -24,11 +24,12 @@ public sealed class LogAccessGuard(IVehicleRepository vehicles, AccessService ac
 
     /// <summary>
     /// <see cref="ForVehicleAsync"/> for many vehicles in a fixed number of queries (#311: a page of vehicles): the contexts of those that are
-    /// live and visible, keyed by vehicle id; the others are missing.
+    /// live and visible, keyed by vehicle id; the others are missing. The vehicles are the ones the caller holds (#320: a list's rows, a
+    /// mutation's answer), never read again: one in the trash is left out, as the read by id that stood here left it out.
     /// </summary>
-    public async Task<IReadOnlyDictionary<Guid, LogContext>> ForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    public async Task<IReadOnlyDictionary<Guid, LogContext>> ForVehiclesAsync(IReadOnlyCollection<Vehicle> vehicles, CancellationToken ct)
     {
-        var live = await vehicles.ListByIdsAsync(vehicleIds, ct);
+        var live = vehicles.Where(v => v.DeletedAt is null).DistinctBy(v => v.Id).ToList();
         var levels = await access.LogLevelsAsync(live, ct);
         return live.Where(v => levels.GetValueOrDefault(v.Id) >= AccessLevel.View)
             .ToDictionary(v => v.Id, v => new LogContext(v, levels[v.Id]));

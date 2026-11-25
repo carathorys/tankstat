@@ -12,8 +12,31 @@ namespace Tankstat.Application.Access;
 /// </summary>
 public sealed class AccessService(
     ICurrentUser current, IOptions<AuthOptions> auth, IAccessGrantRepository grants, IAccessSettingsRepository settings,
-    IResourceGrantRepository resourceGrants, RunGate? runs = null)
+    IResourceGrantRepository resourceGrants, RunGate? runs = null, IAccessReads? reads = null)
 {
+    private readonly IAccessReads _reads = reads ?? new UncachedAccessReads();
+
+    // ---- The three access reads, once per request (#320) ---------------------------------------------------------------------------
+    // Read through the request's copy, except inside a run (#335): a run has no request, reads inside its own transaction and writes
+    // grants itself (a partial restore's sharing), so it always reads the tables.
+
+    private Task<T> ReadAsync<T>(AccessRead what, Guid userId, Func<CancellationToken, Task<T>> read, CancellationToken ct) =>
+        RunContext.Current is not null ? read(ct) : _reads.GetAsync(new AccessReadKey(what, userId), read, ct);
+
+    private Task<AccessSettings> SettingsAsync(CancellationToken ct) => ReadAsync(AccessRead.Settings, Guid.Empty, settings.GetAsync, ct);
+
+    private Task<IReadOnlyList<AccessGrant>> GrantsAsync(Guid userId, CancellationToken ct) =>
+        ReadAsync(AccessRead.Grants, userId, c => grants.ListForGranteeAsync(userId, c), ct);
+
+    private Task<IReadOnlyList<ResourceGrant>> LogGrantsAsync(Guid userId, CancellationToken ct) =>
+        ReadAsync(AccessRead.LogGrants, userId, c => resourceGrants.ListForGranteeAsync(userId, ResourceType.Vehicle, GrantedFeature.Logs, c), ct);
+
+    /// <summary>
+    /// After a write to the access tables (the default access, a grant, a vehicle's log sharing): what this request kept of them is
+    /// forgotten, so a later field of the same request reads the new data.
+    /// </summary>
+    public void AccessChanged() => _reads.Clear();
+
     /// <summary>
     /// Before a change to a car is made: waits while a run (#335) holds the car, then refuses as busy. Every door that changes a car or what
     /// belongs to it calls this once access is settled (<see cref="LogAccessGuard.RequireEditAsync"/>, the car's own edit, its picture, its sharing).
@@ -44,8 +67,8 @@ public sealed class AccessService(
         var principal = await RequirePrincipalAsync(ct);
         if (principal.IsAdmin || principal.Id == ownerId) return AccessLevel.Delete;
 
-        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
-        var granted = await grants.ListForGranteeAsync(principal.Id, ct);
+        var defaults = (await SettingsAsync(ct)).DefaultLevelForOthers;
+        var granted = await GrantsAsync(principal.Id, ct);
         return AccessPolicy.Resolve(principal.Id, principal.IsAdmin, ownerId, defaults, granted);
     }
 
@@ -63,8 +86,8 @@ public sealed class AccessService(
         var principal = await RequirePrincipalAsync(ct);
         if (principal.IsAdmin || distinct.All(o => o == principal.Id)) return distinct.ToDictionary(o => o, _ => AccessLevel.Delete);
 
-        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
-        var granted = await grants.ListForGranteeAsync(principal.Id, ct);
+        var defaults = (await SettingsAsync(ct)).DefaultLevelForOthers;
+        var granted = await GrantsAsync(principal.Id, ct);
         return distinct.ToDictionary(o => o, o => AccessPolicy.Resolve(principal.Id, principal.IsAdmin, o, defaults, granted));
     }
 
@@ -80,10 +103,10 @@ public sealed class AccessService(
         var principal = await RequirePrincipalAsync(ct);
         if (principal.IsAdmin && (administration || principal.IsAnonymous)) return OwnerScope.All;
 
-        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
+        var defaults = (await SettingsAsync(ct)).DefaultLevelForOthers;
         if (defaults >= level) return OwnerScope.All;
 
-        var owners = (await grants.ListForGranteeAsync(principal.Id, ct))
+        var owners = (await GrantsAsync(principal.Id, ct))
             .Where(g => g.Level >= level).Select(g => g.OwnerId).Append(principal.Id);
         return OwnerScope.Of(owners);
     }
@@ -120,9 +143,9 @@ public sealed class AccessService(
         var principal = await RequirePrincipalAsync(ct);
         if (principal.IsAdmin || distinct.All(v => v.OwnerId == principal.Id)) return distinct.ToDictionary(v => v.Id, _ => AccessLevel.Delete);
 
-        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
-        var granted = await grants.ListForGranteeAsync(principal.Id, ct);
-        var logGrants = (await resourceGrants.ListForGranteeAsync(principal.Id, ResourceType.Vehicle, GrantedFeature.Logs, ct))
+        var defaults = (await SettingsAsync(ct)).DefaultLevelForOthers;
+        var granted = await GrantsAsync(principal.Id, ct);
+        var logGrants = (await LogGrantsAsync(principal.Id, ct))
             .GroupBy(g => g.ResourceId).ToDictionary(g => g.Key, g => g.Max(x => x.Level));
         return distinct.ToDictionary(v => v.Id, v =>
         {
@@ -139,8 +162,8 @@ public sealed class AccessService(
     public async Task<AccessLevel> LogLevelOfAsync(Guid userId, bool isAdmin, Vehicle vehicle, CancellationToken ct)
     {
         if (isAdmin || userId == vehicle.OwnerId) return AccessLevel.Delete;
-        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
-        var level = AccessPolicy.Resolve(userId, false, vehicle.OwnerId, defaults, await grants.ListForGranteeAsync(userId, ct));
+        var defaults = (await SettingsAsync(ct)).DefaultLevelForOthers;
+        var level = AccessPolicy.Resolve(userId, false, vehicle.OwnerId, defaults, await GrantsAsync(userId, ct));
         var grant = await resourceGrants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct);
         return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)(grant?.Level ?? AccessLevel.None));
     }
@@ -179,7 +202,7 @@ public sealed class AccessService(
     private async Task<IReadOnlyList<Guid>> GrantedVehiclesAsync(AccessLevel atLeast, CancellationToken ct)
     {
         var principal = await RequirePrincipalAsync(ct);
-        var granted = await resourceGrants.ListForGranteeAsync(principal.Id, ResourceType.Vehicle, GrantedFeature.Logs, ct);
+        var granted = await LogGrantsAsync(principal.Id, ct);
         return granted.Where(g => g.Level >= atLeast).Select(g => g.ResourceId).ToList();
     }
 }

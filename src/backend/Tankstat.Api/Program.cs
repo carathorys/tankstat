@@ -62,6 +62,7 @@ do
         .AddTypeExtension<VehicleExpenseExtensions>()
         .AddDataLoader<ExpensePhotosLoader>()
         .AddDataLoader<LogLevelByVehicleLoader>()
+        .AddDataLoader<LogLevelOfVehicleLoader>()
         .AddDataLoader<AccessLevelByOwnerLoader>()
         .AddDataLoader<RefuelingCountLoader>()
         .AddDataLoader<VehicleSummaryLoader>()
