@@ -86,6 +86,31 @@ public class AccessReadsTests
     }
 
     [Fact]
+    public async Task TheOwnerTheAdministratorAndARaisedDefault_AnswerAsBefore_AndTheAdministratorReadsNoTable()
+    {
+        var (w, golf, fiat, alice, carol) = await SharedAsync();
+        var bob = w.Current.Principal!;
+        var admin = w.Users.Items.Single(u => u.IsAdmin);
+
+        async Task<IReadOnlyList<AccessReadKey>> CompareAsync()
+        {
+            var reads = new KeepingReads();
+            Assert.Equal(await AnswersAsync(w.Access, golf, fiat, alice, carol), await AnswersAsync(Keeping(w, reads), golf, fiat, alice, carol));
+            Assert.Equal(reads.Read.Count, reads.Read.Distinct().Count()); // each at most once
+            return reads.Read;
+        }
+
+        w.Current.SignInAs(w.Users.Items.Single(u => u.Id == alice));
+        await CompareAsync();
+        w.Current.SignInAs(admin);
+        Assert.Empty(await CompareAsync()); // everything is the administrator's: no table read, as before
+        w.Current.SignInAs(admin);
+        await w.AccessAdmin.SetDefaultLevelAsync(AccessLevel.Edit, default);
+        w.Current.Principal = bob;
+        Assert.Contains(new AccessReadKey(AccessRead.Settings, Guid.Empty), await CompareAsync());
+    }
+
+    [Fact]
     public async Task InsideARun_TheTablesAreReadEachTime_NeverThroughTheRequestsCopy()
     {
         var (w, golf, fiat, alice, carol) = await SharedAsync();
