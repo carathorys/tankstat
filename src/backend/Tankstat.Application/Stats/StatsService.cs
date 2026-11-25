@@ -2,6 +2,7 @@ using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Domain;
 using Tankstat.Domain.Charts;
+using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Stats;
 
@@ -58,12 +59,13 @@ public sealed class StatsService(LogAccessGuard guard, IStatsRepository stats, T
     /// <see cref="SummaryAsync"/> for many vehicles in a fixed number of queries (#311: a page of vehicle cards shows every card's figures):
     /// the vehicles and what the user may do with their logs once, their statistics in one load; null for one that is not visible, as one by one.
     /// </summary>
-    public async Task<IReadOnlyDictionary<Guid, VehicleSummary?>> SummariesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    /// <remarks>The vehicles are the caller's (#320), not read again.</remarks>
+    public async Task<IReadOnlyDictionary<Guid, VehicleSummary?>> SummariesAsync(IReadOnlyCollection<Vehicle> vehicles, CancellationToken ct)
     {
-        var visible = await guard.ForVehiclesAsync(vehicleIds, ct);
-        var data = await stats.LoadManyAsync([.. visible.Keys], ct);
+        var visible = await guard.ForVehiclesAsync(vehicles, ct);
+        IReadOnlyDictionary<Guid, StatsData> data = visible.Count == 0 ? new Dictionary<Guid, StatsData>() : await stats.LoadManyAsync([.. visible.Keys], ct);
         var today = Today;
-        return vehicleIds.Distinct().ToDictionary(id => id, id => data.TryGetValue(id, out var d) ? StatsCalculator.Summary(d, today) : (VehicleSummary?)null);
+        return vehicles.Select(v => v.Id).Distinct().ToDictionary(id => id, id => data.TryGetValue(id, out var d) ? StatsCalculator.Summary(d, today) : (VehicleSummary?)null);
     }
 
     private async Task<bool> IsVisibleAsync(Guid vehicleId, CancellationToken ct) => await guard.ForVehicleAsync(vehicleId, ct) is not null;

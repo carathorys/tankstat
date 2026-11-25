@@ -24,8 +24,8 @@ public sealed class VehicleExtensions
         await levels.LoadAsync(vehicle.OwnerId, ct) >= AccessLevel.Edit;
 
     /// <summary>What the current user may do with this vehicle's logs: view, add/change (Edit) or also delete permanently (Delete).</summary>
-    public Task<AccessLevel> GetLogAccess([Parent] Vehicle vehicle, LogLevelByVehicleLoader levels, CancellationToken ct) =>
-        levels.LoadAsync(vehicle.Id, ct);
+    public Task<AccessLevel> GetLogAccess([Parent] Vehicle vehicle, LogLevelOfVehicleLoader levels, CancellationToken ct) =>
+        levels.LoadAsync(vehicle, ct);
 
     /// <summary>Null when authentication is off or the owner no longer exists.</summary>
     public Task<UserRef?> GetOwner([Parent] Vehicle vehicle, UserRefLoader users, CancellationToken ct) =>
@@ -39,5 +39,5 @@ public sealed class VehicleExtensions
     public string? GetPictureUrl([Parent] Vehicle vehicle) => MediaUrls.Image(vehicle.PictureImageId);
 
     public Task<int> GetRefuelingCount([Parent] Vehicle vehicle, RefuelingCountLoader counts, CancellationToken ct) =>
-        counts.LoadAsync(vehicle.Id, ct);
+        counts.LoadAsync(vehicle, ct);
 }
