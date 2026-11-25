@@ -96,6 +96,31 @@ test('a vehicle\'s dashboard, shown and being arranged, has no axe violations', 
   expect(await violations(page, '[role="dialog"]')).toEqual([])
 })
 
+// #319: a part that fades in inside the scanned one is waited for. The builder's period panel fades in (`tk-fade`); stretched to 3 s
+// here, a scan right after *From scratch* would measure its text dimmed (a contrast violation) unless the scan waits for it to end.
+test('a scan waits for what fades in inside the part it scans (#319)', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await page.goto(`/vehicles/${vehicle.id}`)
+  await pageLoaded(page)
+  await expect(page.getByRole('heading', { name: 'Monthly costs' })).toBeVisible()
+  await page.getByRole('button', { name: 'Customize' }).click()
+  await expect(page.getByRole('button', { name: 'Save dashboard' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add widget' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add widget' })
+  await expect(dialog).toBeVisible()
+  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1')
+  // The fade stretched; and an animation that never ends (as a spinner's) on the dialog's title, which the scan must not wait for.
+  await page.addStyleTag({ content: '.tk-fade { animation-duration: 3s !important; } @keyframes zz-endless { to { transform: none; } } [role="dialog"] h2 { animation: zz-endless 1s linear infinite; }' })
+  await dialog.getByRole('button', { name: /^From scratch/ }).click()
+  await expect(dialog.getByRole('combobox', { name: 'What it shows' })).toBeVisible()
+  const fading = () => page.evaluate(() => document.getAnimations().some((a) => (a as CSSAnimation).animationName === 'tk-fade' && a.playState === 'running'
+    && ((a.effect as KeyframeEffect).target as Element).closest('[role="dialog"]') !== null))
+  expect(await fading()).toBe(true) // the panel is still fading in when the scan is asked for
+  expect(await violations(page, '[role="dialog"]')).toEqual([])
+  // The scan ran only once it had faded in: a desktop's axe does not judge the dimmed pick, so this says it at both sizes.
+  expect(await fading()).toBe(false)
+})
+
 // The solid fills (#235): a primary button under the pointer, and a red confirmation at rest and under it, in both schemes; a hover is
 // a pointer's, so on a desktop only. Each scan waits for the fill to be the hover's (MUI's 250 ms transition), as it is drawn.
 for (const scheme of ['dark', 'light'] as const) {
