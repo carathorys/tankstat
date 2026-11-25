@@ -6,14 +6,16 @@ import { expect, type Page } from '@playwright/test'
  * and nothing in it moves any more (#235, #319):
  * - **Faded in:** every element `include` selects and its ancestors at full opacity. axe calls a node under a fading ancestor
  *   "incomplete" and passes it, so a scan of a dialog mid fade-in would pass silently.
- * - **Still:** no finite CSS animation or transition running inside the scanned part (the whole document without `include`) or on one
- *   of its ancestors. A fading descendant is measured, not passed: the Add widget dialog's period panel (`tk-fade`) read its text at
- *   4.43:1 when the scan came in its first 65 ms. Animations that never end (`tk-pulse`, `tk-spin`, a skeleton's pulse) are not waited
- *   for, nor is motion driven by script (motion/react, react-grid-layout: `settled` in `app.ts` is for those).
+ * - **Still:** no finite animation running inside the scanned part (the whole document without `include`) or on one of its
+ *   ancestors: whatever `document.getAnimations()` lists, whoever started it (CSS animations and transitions, react-grid-layout's moves,
+ *   motion/react's opacity tweens). A fading descendant is measured, not passed: the Add widget dialog's period panel (`tk-fade`) read
+ *   its text at 4.43:1 when the scan came in its first 65 ms. Animations that never end (`tk-pulse`, `tk-spin`, a skeleton's pulse) are
+ *   not waited for, nor is motion a script draws frame by frame (motion/react's scale and layout animations: `settled` in `app.ts`).
  * Both are polled for up to 5 s; past it the test fails naming what did not match or what kept moving.
  */
 export async function violations(page: Page, include?: string) {
-  await expect.poll(() => page.evaluate(unsettled, include ?? null), { timeout: 5_000, message: `the part to scan (${include ?? 'the page'}) is drawn and still` }).toEqual([])
+  // A page between two documents (a navigation) answers no evaluate: polled again, as `waitForFunction` did, not failed at once.
+  await expect.poll(() => page.evaluate(unsettled, include ?? null).catch((error: Error) => [`not readable: ${error.message}`]), { timeout: 5_000, message: `the part to scan (${include ?? 'the page'}) is drawn and still` }).toEqual([])
   const builder = new AxeBuilder({ page })
   if (include) builder.include(include)
   const { violations } = await builder.analyze()
