@@ -61,6 +61,19 @@ public class RequestAccessReadsTests
     {
         var (reads, _) = InARequest();
         var key = new AccessReadKey(AccessRead.Settings, Guid.Empty);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => reads.GetAsync<int>(key, _ => throw new InvalidOperationException("the database is away"), default));
+        var calls = 0;
+        var gate = new TaskCompletionSource();
+        async Task<int> Read(CancellationToken ct)
+        {
+            Interlocked.Increment(ref calls);
+            await gate.Task; // still reading while the others ask
+            throw new InvalidOperationException("the database is away");
+        }
+
+        var asks = Enumerable.Range(0, 5).Select(_ => Task.Run(() => reads.GetAsync(key, Read, default))).ToList();
+        await Task.Delay(50);
+        gate.SetResult();
+        foreach (var ask in asks) await Assert.ThrowsAsync<InvalidOperationException>(() => ask);
+        Assert.Equal(1, calls);
     }
 }

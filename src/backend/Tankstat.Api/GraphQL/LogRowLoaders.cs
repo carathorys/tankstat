@@ -55,9 +55,9 @@ public sealed class RefuelingCountLoader(RefuelingService refuelings, IBatchSche
 }
 
 /// <summary>
-/// What the user may do with the logs of each vehicle of a list (#320): <see cref="LogLevelByVehicleLoader"/> for the vehicles the field is
-/// resolved on, which are not read again by id (a vehicle in the trash answers its level too, as there). The rows of logs, tyre lines and
-/// sync changes, which hold only a vehicle's id, keep the other.
+/// What the user may do with the logs of each vehicle of a list (#320), keyed by the vehicle the field is resolved on, which is not read
+/// again by id (a vehicle in the trash answers its level too, as with <see cref="LogLevelByVehicleLoader"/>). The rows of logs, tyre lines
+/// and sync changes, which hold only a vehicle's id, keep <see cref="LogLevelByVehicleLoader"/>.
 /// </summary>
 public sealed class LogLevelOfVehicleLoader(AccessService access, IBatchScheduler scheduler, DataLoaderOptions options)
     : BatchDataLoader<Vehicle, AccessLevel>(scheduler, options)
