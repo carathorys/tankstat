@@ -8,7 +8,7 @@ import { ExportCarButton } from '../../src/pages/vehicle/ExportCarDialog.tsx'
 import { check } from '../support/accessibility.tsx'
 import { graphql } from '../support/graphql.ts'
 import { gqlError, renderWithApollo, stubViewport } from '../support/mocks.tsx'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
@@ -75,6 +75,7 @@ it('is a tab of the Import and export page, and the page stays Import while expo
   expect(await screen.findByText(/Export your own cars as a file/)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('tab', { name: 'Import' }))
   expect(await screen.findByText('Source')).toBeInTheDocument()
+  await answered() // the Import tab's own questions: one answered after this test's handlers are gone would leave the next test offline
 })
 
 it("a report's link opens the Import tab whatever the tab says", async () => {
@@ -82,6 +83,7 @@ it("a report's link opens the Import tab whatever the tab says", async () => {
   server.use(graphql.query('ImportRun', () => HttpResponse.json({ data: { importRun: null } })))
   renderWithApollo(<ImportPage />, '/import?tab=export&run=run1')
   expect(await screen.findByRole('tab', { name: 'Import', selected: true })).toBeInTheDocument()
+  await answered() // its ImportRun, still under way: unanswered once the handlers are reset, it would leave the next test offline (#380's CI)
 })
 
 it('exports the ticked car with its kinds and a passphrase typed twice, then follows the build', async () => {
