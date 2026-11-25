@@ -71,6 +71,8 @@ public static class DependencyInjection
         services.AddSingleton<SetupStatus>();
 
         services.AddScoped<AccessService>();
+        // Outside a request nothing of the access tables is kept (#320); the Api keeps them per request (RequestAccessReads).
+        services.TryAddScoped<IAccessReads, UncachedAccessReads>();
         services.AddScoped<SetupGate>();
         services.AddScoped<SetupService>();
         services.AddScoped<RestoreService>();

@@ -66,6 +66,7 @@ public sealed class ResourceSharingService(
                 await grants.UpdateAsync(existing, ct);
             }
         }
+        access.AccessChanged(); // a later field of this request reads the new log grant (#320)
 
         if (before == level) return;
         var actor = await access.RequirePrincipalAsync(ct);

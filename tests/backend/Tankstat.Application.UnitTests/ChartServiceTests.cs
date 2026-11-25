@@ -68,18 +68,21 @@ public class ChartServiceTests
         s.W.Current.SignInAs(s.Bob);
         var bobs = await s.W.VehicleService.AddAsync("Bob's", null, FuelType.Diesel, MeasurementUnits.Metric, default);
         await s.W.RefuelingService.LogAsync(bobs.Id, new RefuelingInput(new DateOnly(2026, 9, 7), 50, 90, "EUR", 300, true, null), default);
-        var ids = new[] { s.Car.Id, empty.Id, trashed.Id, bobs.Id, Guid.NewGuid(), s.Car.Id };
+        var ids = new[] { s.Car.Id, empty.Id, trashed.Id, bobs.Id, s.Car.Id };
+        // The vehicles as a list hands them over (#320), the one in the trash with its DeletedAt, and one of them twice.
+        var found = (await s.W.Vehicles.ListByIdsIncludingDeletedAsync(ids, default)).ToDictionary(v => v.Id);
+        var vehicles = ids.Select(id => found[id]).ToList();
 
         foreach (var who in new[] { s.Alice, s.Bob })
         {
             s.W.Current.SignInAs(who);
-            var together = await s.W.Stats.SummariesAsync(ids, default);
+            var together = await s.W.Stats.SummariesAsync(vehicles, default);
             Assert.Equal(ids.Distinct().Count(), together.Count);
             foreach (var id in ids) Assert.Equivalent(await s.W.Stats.SummaryAsync(id, default), together[id]);
         }
         s.W.Current.SignInAs(s.Alice);
-        var alices = await s.W.Stats.SummariesAsync(ids, default);
-        Assert.Equal([true, true, false, false, false], new[] { s.Car.Id, empty.Id, trashed.Id, bobs.Id, ids[4] }.Select(id => alices[id] is not null));
+        var alices = await s.W.Stats.SummariesAsync(vehicles, default);
+        Assert.Equal([true, true, false, false], new[] { s.Car.Id, empty.Id, trashed.Id, bobs.Id }.Select(id => alices[id] is not null));
     }
 
     [Fact]

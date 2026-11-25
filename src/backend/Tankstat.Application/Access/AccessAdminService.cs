@@ -25,6 +25,7 @@ public sealed class AccessAdminService(
         var before = current.DefaultLevelForOthers;
         current.SetDefaultLevelForOthers(level);
         await settings.SaveAsync(current, ct);
+        access.AccessChanged(); // a later field of this request reads the new default (#320)
 
         if (before != level)
         {
@@ -65,6 +66,7 @@ public sealed class AccessAdminService(
             existing.ChangeLevel(level);
             await grants.UpdateAsync(existing, ct);
         }
+        access.AccessChanged(); // a later field of this request reads the new grant (#320)
 
         if (before == level) return;
         logger.LogInformation("Administrator {AdminId} set the access of user {GranteeId} to the data of user {OwnerId} from {Before} to {After}", admin.Id, grantee.Id, owner.Id, before, level);

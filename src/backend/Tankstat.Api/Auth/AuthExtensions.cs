@@ -19,6 +19,7 @@ public static class AuthExtensions
     {
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
+        services.AddScoped<Tankstat.Application.Access.IAccessReads, RequestAccessReads>(); // the access tables read once per request (#320)
         services.AddPersistedKeyRing();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
 

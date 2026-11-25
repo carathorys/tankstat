@@ -329,16 +329,18 @@ public class LogLevelsTests
         w.Current.SignInAs(bob);
         var bobs = await w.VehicleService.AddAsync("Bob car", null, FuelType.Lpg, default);
         await w.RefuelingService.LogAsync(bobs.Id, new RefuelingInput(new DateOnly(2026, 9, 1), 40, 60, "EUR", 500, true, null), default);
-        var ids = new[] { twice.Id, none.Id, trashed.Id, bobs.Id, Guid.NewGuid() };
+        var ids = new[] { twice.Id, none.Id, trashed.Id, bobs.Id };
+        // The vehicles as a list hands them over (#320), the one in the trash with its DeletedAt.
+        var vehicles = await w.Vehicles.ListByIdsIncludingDeletedAsync(ids, default);
 
         foreach (var who in new[] { alice, bob })
         {
             w.Current.SignInAs(who);
-            var together = await w.RefuelingService.CountsAsync(ids, default);
+            var together = await w.RefuelingService.CountsAsync(vehicles, default);
             foreach (var id in ids) Assert.Equal(await w.RefuelingService.CountAsync(id, default), together[id]);
         }
         w.Current.SignInAs(alice);
-        var alicesCounts = await w.RefuelingService.CountsAsync(ids, default);
-        Assert.Equal([2, 0, 0, 0, 0], ids.Select(id => alicesCounts[id]));
+        var alicesCounts = await w.RefuelingService.CountsAsync(vehicles, default);
+        Assert.Equal([2, 0, 0, 0], ids.Select(id => alicesCounts[id]));
     }
 }
